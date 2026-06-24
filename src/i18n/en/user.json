@@ -1,0 +1,5 @@
+{
+  "notFound": "User with ID {id} not found",
+  "alreadyExists": "User with this email already exists",
+  "createFailed": "Failed to create user"
+}

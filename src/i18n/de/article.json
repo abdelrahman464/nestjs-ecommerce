@@ -1,0 +1,6 @@
+{
+  "notFound": "Artikel mit ID {id} nicht gefunden",
+  "notFoundBySlug": "Artikel mit Slug {slug} nicht gefunden",
+  "titleAlreadyExists": "Ein Artikel mit dem Titel \"{title}\" existiert bereits",
+  "createFailed": "Artikel konnte nicht erstellt werden"
+}

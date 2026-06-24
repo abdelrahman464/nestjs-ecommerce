@@ -1,0 +1,8 @@
+{
+  "notFound": "SubCategory with ID {id} not found",
+  "notFoundBySlug": "SubCategory with slug {slug} not found",
+  "parentNotFound": "Parent category with ID {id} not found",
+  "alreadyExists": "SubCategory title already exists",
+  "titleAlreadyExists": "A subcategory with the title \"{title}\" already exists in this category",
+  "createFailed": "Failed to create subcategory"
+}

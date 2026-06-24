@@ -1,0 +1,5 @@
+{
+  "forbidden": "You do not have permission to access this resource",
+  "invalidId": "Invalid ID format",
+  "invalidToken": "Invalid token"
+}

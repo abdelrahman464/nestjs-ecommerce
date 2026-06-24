@@ -1,0 +1,12 @@
+{
+  "cartEmpty": "Your cart is empty. Add products before checkout.",
+  "productNotFound": "Product with ID {id} not found",
+  "checkoutPending": "You already have a pending checkout (payment {id})",
+  "invalidAmount": "Product \"{name}\" has no payable price",
+  "insufficientStock": "Not enough stock for \"{name}\" (available: {available})",
+  "productUnavailable": "Product \"{name}\" is not available for purchase",
+  "providerNotSupported": "Payment provider '{provider}' is not supported",
+  "checkoutFailed": "Failed to create the checkout session",
+  "invalidWebhook": "Invalid or unverified webhook payload",
+  "notFound": "Payment with ID {id} not found"
+}

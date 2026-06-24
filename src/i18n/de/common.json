@@ -1,0 +1,5 @@
+{
+  "forbidden": "Sie haben keine Berechtigung, auf diese Ressource zuzugreifen",
+  "invalidId": "Ungültiges ID-Format",
+  "invalidToken": "Ungültiges Token"
+}

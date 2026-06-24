@@ -1,0 +1,8 @@
+{
+  "notFound": "Bewertung mit ID {id} nicht gefunden",
+  "alreadyReviewed": "Sie haben dieses Produkt bereits bewertet",
+  "productNotFound": "Produkt mit ID {id} nicht gefunden",
+  "invalidProductId": "Ungültige Produkt-ID",
+  "notAllowedUpdate": "Sie dürfen diese Bewertung nicht bearbeiten",
+  "notAllowedDelete": "Sie dürfen diese Bewertung nicht löschen"
+}

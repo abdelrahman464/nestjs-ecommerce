@@ -1,0 +1,75 @@
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { DatabaseModule } from './database/database.module';
+import databaseConfig from './config/database.config';
+import { AuthModule } from './modules/auth/auth.module';
+import { UsersModule } from './modules/users/users.module';
+import { NotificationModule } from './modules/notifications/notification.module';
+import { ProductsModule } from './modules/products/products.module';
+import { BrandsModule } from './modules/brands/brands.module';
+import { ArticlesModule } from './modules/articles/articles.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
+import jwtConfig from './config/jwt.config';
+import appConfig from './config/app.config';
+import emailConfig from './config/email.config';
+import googleAuthConfig from './config/google-auth.config';
+import stripeConfig from './config/stripe.config';
+import klarnaConfig from './config/klarna.config';
+import paymentConfig from './config/payment.config';
+import { PaymentsModule } from './modules/payments/payments.module';
+import { CategoriesModule } from './modules/categories/categories.module';
+import { SubCategoriesModule } from './modules/subcategories/subcategories.module';
+import { FilesUploadModule } from './modules/files-upload/files-upload.module';
+import { CartModule } from './modules/cart/cart.module';
+import * as path from 'path';
+import {
+  AcceptLanguageResolver,
+  HeaderResolver,
+  I18nModule,
+  QueryResolver,
+} from 'nestjs-i18n';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      load: [
+        databaseConfig,
+        jwtConfig,
+        appConfig,
+        emailConfig,
+        googleAuthConfig,
+        stripeConfig,
+        klarnaConfig,
+        paymentConfig,
+      ],
+      envFilePath: `.env.${process.env.NODE_ENV || 'development'}`,
+    }),
+    I18nModule.forRoot({
+      fallbackLanguage: process.env.DEFAULT_LANGUAGE ?? 'de',
+      loaderOptions: {
+        path: path.join(__dirname, '/i18n/'),
+        watch: true,
+      },
+      resolvers: [
+        { use: QueryResolver, options: ['lang'] },
+        AcceptLanguageResolver,
+        new HeaderResolver(['x-lang']),
+      ],
+    }),
+    DatabaseModule,
+    NotificationModule,
+    AuthModule,
+    UsersModule,
+    FilesUploadModule,
+    CategoriesModule,
+    SubCategoriesModule,
+    BrandsModule,
+    ProductsModule,
+    CartModule,
+    ArticlesModule,
+    ReviewsModule,
+    PaymentsModule,
+  ],
+})
+export class AppModule {}

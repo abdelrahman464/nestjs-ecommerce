@@ -1,0 +1,6 @@
+{
+  "notFound": "Brand with ID {id} not found",
+  "notFoundBySlug": "Brand with slug {slug} not found",
+  "titleAlreadyExists": "A brand with the title \"{title}\" already exists",
+  "createFailed": "Failed to create brand"
+}

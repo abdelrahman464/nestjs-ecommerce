@@ -1,0 +1,7 @@
+{
+  "notFound": "Produkt mit ID {id} nicht gefunden",
+  "notFoundBySlug": "Produkt mit Slug {slug} nicht gefunden",
+  "titleAlreadyExists": "Ein Produkt mit dem Titel \"{title}\" existiert bereits",
+  "skuAlreadyExists": "Ein Produkt mit der SKU \"{sku}\" existiert bereits",
+  "createFailed": "Produkt konnte nicht erstellt werden"
+}

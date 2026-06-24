@@ -1,0 +1,6 @@
+{
+  "productNotFound": "Product with ID {id} not found",
+  "productUnavailable": "This product is not available",
+  "itemNotFound": "Product {productId} is not in the cart",
+  "insufficientStock": "Not enough stock available (max {available})"
+}

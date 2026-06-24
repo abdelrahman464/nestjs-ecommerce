@@ -1,0 +1,6 @@
+{
+  "productNotFound": "Produkt mit ID {id} nicht gefunden",
+  "productUnavailable": "Dieses Produkt ist nicht verfügbar",
+  "itemNotFound": "Produkt {productId} befindet sich nicht im Warenkorb",
+  "insufficientStock": "Nicht genügend Lagerbestand (max. {available})"
+}

@@ -1,0 +1,47 @@
+What this pattern is called
+This is JWT authentication with a refresh token (sometimes “access + refresh token” or “short-lived access token + long-lived refresh token”).
+
+Your app stores both tokens in httpOnly cookies, which is often called:
+
+Cookie-based JWT auth or secure cookie session with JWT
+
+It is not a classic server session (no session ID in Redis). It is stateless JWT for the access token, with a stored refresh token in the database for security.
+
+
+Access token :Short (JWT_EXPIRE, e.g. 15m) - Sent on every API request to prove who you are
+Refresh token : Long (JWT_REFRESH_EXPIRE, e.g. 10d) - Used only to get a new access token when the old one expires
+
+
+#Login flow
+1. POST /api/v1/auth/login  { email, password }
+2. Server validates credentials
+3. Server creates access + refresh JWT
+4. Server hashes refresh token → saves in DB (user.currentHashedRefreshToken)
+5. Server sets two httpOnly cookies (accessToken, refreshToken)
+6. Response: { data: { _id, name, email, role } }  (no tokens in body)
+*****From then on, the browser sends cookies automatically (credentials: 'include').*****
+
+#When the access token expires
+1. Client calls GET /api/v1/cart  (access token expired)
+2. Server returns 401 Unauthorized
+3. Client calls POST /api/v1/auth/refresh  (only refresh cookie needed)
+4. Server verifies refresh JWT + checks DB hash
+5. Server issues NEW access + refresh tokens (rotation)
+6. Client retries the original request
+
+
+#When refresh also fails → login again
+Refresh fails when:
+    -Refresh token expired (JWT_REFRESH_EXPIRE passed)
+    -User logged out (refresh hash removed from DB)
+    -Password was changed (tokens invalidated)
+    -Cookie missing
+    ***Then: redirect to login — user must enter email/password again.
+
+
+-POST /auth/register          (Public)          Create account + set cookies
+-POST /auth/login             (Public)          Sign in + set cookies
+-POST /auth/refresh           (Public)          New tokens when access expired
+-POST /auth/logout            (Public)          Clear session
+-PATCH /auth/change-password  (Private)         Change password + new cookies
+******Rule for the client: always use credentials: 'include' on every request to the API.

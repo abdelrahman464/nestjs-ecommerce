@@ -1,0 +1,8 @@
+{
+  "notFound": "Review with ID {id} not found",
+  "alreadyReviewed": "You have already reviewed this product",
+  "productNotFound": "Product with ID {id} not found",
+  "invalidProductId": "Invalid product id",
+  "notAllowedUpdate": "You are not allowed to update this review",
+  "notAllowedDelete": "You are not allowed to delete this review"
+}

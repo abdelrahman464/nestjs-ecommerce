@@ -1,0 +1,6 @@
+{
+  "notFound": "Marke mit ID {id} nicht gefunden",
+  "notFoundBySlug": "Marke mit Slug {slug} nicht gefunden",
+  "titleAlreadyExists": "Eine Marke mit dem Titel \"{title}\" existiert bereits",
+  "createFailed": "Marke konnte nicht erstellt werden"
+}

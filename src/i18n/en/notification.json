@@ -1,0 +1,3 @@
+{
+  "strategyUnavailable": "Notification strategy '{type}' is not available. Available strategies: {available}"
+}

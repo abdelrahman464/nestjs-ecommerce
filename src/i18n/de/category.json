@@ -1,0 +1,7 @@
+{
+  "notFound": "Kategorie mit ID {id} nicht gefunden",
+  "notFoundBySlug": "Kategorie mit Slug {slug} nicht gefunden",
+  "alreadyExists": "Kategorietitel existiert bereits",
+  "titleAlreadyExists": "Eine Kategorie mit dem Titel \"{title}\" existiert bereits",
+  "createFailed": "Kategorie konnte nicht erstellt werden"
+}
