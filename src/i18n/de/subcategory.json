@@ -1,8 +1,0 @@
-{
-  "notFound": "Unterkategorie mit ID {id} nicht gefunden",
-  "notFoundBySlug": "Unterkategorie mit Slug {slug} nicht gefunden",
-  "parentNotFound": "Übergeordnete Kategorie mit ID {id} nicht gefunden",
-  "alreadyExists": "Unterkategorietitel existiert bereits",
-  "titleAlreadyExists": "Eine Unterkategorie mit dem Titel \"{title}\" existiert bereits in dieser Kategorie",
-  "createFailed": "Unterkategorie konnte nicht erstellt werden"
-}

@@ -2,6 +2,9 @@
   "notFound": "Kategorie mit ID {id} nicht gefunden",
   "notFoundBySlug": "Kategorie mit Slug {slug} nicht gefunden",
   "alreadyExists": "Kategorietitel existiert bereits",
-  "titleAlreadyExists": "Eine Kategorie mit dem Titel \"{title}\" existiert bereits",
-  "createFailed": "Kategorie konnte nicht erstellt werden"
+  "titleAlreadyExists": "Eine Kategorie mit dem Titel \"{title}\" existiert bereits in dieser übergeordneten Kategorie",
+  "createFailed": "Kategorie konnte nicht erstellt werden",
+  "parentNotFound": "Übergeordnete Kategorie mit ID {id} nicht gefunden",
+  "hasChildren": "Eine Kategorie mit Unterkategorien kann nicht gelöscht werden",
+  "invalidParent": "Eine Kategorie kann nicht ihre eigene übergeordnete Kategorie sein"
 }

@@ -28,10 +28,6 @@ export class CreateProductDto {
 
   @IsOptional()
   @IsMongoId()
-  subCategory?: Types.ObjectId;
-
-  @IsOptional()
-  @IsMongoId()
   brand?: Types.ObjectId;
 
   @IsDefined({
@@ -99,16 +95,6 @@ export class CreateProductDto {
   @Type(() => FieldLocalizedDto)
   @ValidateNested()
   material?: FieldLocalizedDto;
-
-  @IsOptional()
-  @IsObject()
-  specifications?: {
-    dimensions?: string;
-    weight?: string;
-    color?: string;
-    finish?: string;
-    thickness?: string;
-  };
 
   @IsOptional()
   @IsArray()

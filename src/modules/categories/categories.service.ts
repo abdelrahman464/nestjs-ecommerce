@@ -22,6 +22,17 @@ export class CategoriesService {
     return this.categoryRepository.findAll(queryParams);
   }
 
+  async findByParentCategory(
+    parentCategoryId: Types.ObjectId,
+    queryParams: Record<string, any>,
+  ): Promise<PaginatedResponseDto<CategoryDocument>> {
+    await this.ensureParentCategoryExists(parentCategoryId);
+    return this.categoryRepository.findByParentCategory(
+      parentCategoryId,
+      queryParams,
+    );
+  }
+
   async findOne(id: Types.ObjectId): Promise<CategoryDocument> {
     const category = await this.categoryRepository.findById(id);
     if (!category) {
@@ -29,7 +40,6 @@ export class CategoriesService {
         id: id.toString(),
       });
     }
-
     return category;
   }
 
@@ -48,8 +58,13 @@ export class CategoriesService {
   }
 
   async create(dto: CreateCategoryDto): Promise<CategoryDocument> {
+    if (dto.parentCategory) {
+      await this.ensureParentCategoryExists(dto.parentCategory);
+    }
+
     const titleExists = await this.categoryRepository.findByGermanTitle(
       dto.title['de'],
+      dto.parentCategory ?? null,
     );
     if (titleExists) {
       throw new I18nHttpException(
@@ -74,49 +89,124 @@ export class CategoriesService {
     return category;
   }
 
+  async createBulk(dtos: CreateCategoryDto[]): Promise<CategoryDocument[]> {
+    const prepared: Array<CreateCategoryDto & { slug: string }> = [];
+
+    for (const dto of dtos) {
+      if (dto.parentCategory) {
+        await this.ensureParentCategoryExists(dto.parentCategory);
+      }
+
+      const titleExists = await this.categoryRepository.findByGermanTitle(
+        dto.title['de'],
+        dto.parentCategory ?? null,
+      );
+      if (titleExists) {
+        throw new I18nHttpException(
+          HttpStatus.CONFLICT,
+          'category.titleAlreadyExists',
+          { title: dto.title['de'] },
+        );
+      }
+
+      const slug = await generateUniqueSlug(
+        dto.title['de'],
+        this.categoryModel,
+      );
+      prepared.push({ ...dto, slug });
+    }
+
+    return this.categoryRepository.createCategories(prepared);
+  }
+
   async update(
     id: Types.ObjectId,
     dto: UpdateCategoryDto,
   ): Promise<CategoryDocument> {
     const existing = await this.categoryRepository.findById(id);
-    if (!existing)
+    if (!existing) {
       throw new I18nHttpException(HttpStatus.NOT_FOUND, 'category.notFound', {
         id: id.toString(),
       });
+    }
 
-    // get existing english title
+    if (dto.parentCategory) {
+      await this.ensureParentCategoryExists(dto.parentCategory);
+
+      if (dto.parentCategory.toString() === id.toString()) {
+        throw new I18nHttpException(
+          HttpStatus.BAD_REQUEST,
+          'category.invalidParent',
+        );
+      }
+    }
+
+    const targetParent =
+      dto.parentCategory !== undefined
+        ? dto.parentCategory
+        : (existing.parentCategory ?? null);
+
     const existingGermanTitle = existing.title?.['de'] ?? undefined;
-
-    // get new english title
     const newGermanTitle = dto.title?.['de'] ?? undefined;
 
-    // check if new english title is different from existing english title
+    // if the new german title is different from the existing german title, check if the title already exists
     if (newGermanTitle && newGermanTitle !== existingGermanTitle) {
-      // check if new english title already exists
-      const titleExists =
-        await this.categoryRepository.findByGermanTitle(newGermanTitle);
-      // if new english title already exists, throw error
-      if (titleExists) {
+      //make sure the title is not already taken by another category in the same parent category
+      const titleExists = await this.categoryRepository.findByGermanTitle(
+        newGermanTitle,
+        targetParent,
+      );
+      if (titleExists && titleExists.id.toString() !== existing.id.toString()) {
         throw new I18nHttpException(
           HttpStatus.CONFLICT,
           'category.titleAlreadyExists',
           { title: newGermanTitle },
         );
       }
-      // generate new slug
-      const newSlug = await generateUniqueSlug(
+
+      dto.slug = await generateUniqueSlug(
         newGermanTitle,
         this.categoryModel,
         existing.id.toString(),
       );
-      dto.slug = newSlug;
     }
 
-    return this.categoryRepository.updateCategory(id, dto);
+    const updated = await this.categoryRepository.updateCategory(id, dto);
+    if (!updated) {
+      throw new I18nHttpException(HttpStatus.NOT_FOUND, 'category.notFound', {
+        id: id.toString(),
+      });
+    }
+
+    return updated;
   }
 
   async delete(id: Types.ObjectId): Promise<void> {
     await this.findOne(id);
+
+    // block deletion if the category has children
+    const childCount =
+      await this.categoryRepository.countChildrenByParentCategory(id);
+    if (childCount > 0) {
+      throw new I18nHttpException(
+        HttpStatus.BAD_REQUEST,
+        'category.hasChildren',
+      );
+    }
+
     await this.categoryRepository.deleteCategory(id);
+  }
+
+  private async ensureParentCategoryExists(
+    parentCategory: Types.ObjectId | string,
+  ): Promise<void> {
+    const parent = await this.categoryRepository.findById(parentCategory);
+    if (!parent) {
+      throw new I18nHttpException(
+        HttpStatus.NOT_FOUND,
+        'category.parentNotFound',
+        { id: parentCategory.toString() },
+      );
+    }
   }
 }

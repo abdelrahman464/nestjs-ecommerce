@@ -1,15 +1,21 @@
 import {
   IsBoolean,
   IsDefined,
+  IsMongoId,
   IsOptional,
   IsString,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { i18nValidationMessage } from 'nestjs-i18n';
+import { Types } from 'mongoose';
 import { FieldLocalizedDto } from '../../../shared/dtos/filed-localized.dto';
 
 export class CreateCategoryDto {
+  @IsOptional()
+  @IsMongoId()
+  parentCategory?: Types.ObjectId;
+
   @IsDefined({
     message: i18nValidationMessage('validation.field_required', {
       field: 'title',

@@ -1,20 +1,25 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+
 import mongoose, { HydratedDocument, Types } from 'mongoose';
+
 import { Category } from '../../categories/schemas/category.schema';
-import { SubCategory } from '../../subcategories/schemas/subcategory.schema';
+
 import { Brand } from '../../brands/schemas/brand.schema';
+
 import { ProductStatus } from '../enums/product-status.enum';
+
 import { ProductUnit } from '../enums/product-unit.enum';
 
 @Schema({ timestamps: true })
 export class Product {
-  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: Category.name, required: true })
+  @Prop({
+    type: mongoose.Schema.Types.ObjectId,
+    ref: Category.name,
+    required: true,
+  })
   category: Types.ObjectId;
 
-  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: SubCategory.name })
-  subCategory?: Types.ObjectId;
-
-  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: Brand.name,  })
+  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: Brand.name })
   brand?: Types.ObjectId;
 
   @Prop({ required: true, unique: true, trim: true, i18n: true })
@@ -47,15 +52,6 @@ export class Product {
   @Prop({ trim: true, i18n: true })
   material?: string;
 
-  @Prop({ type: Object })
-  specifications?: {
-    dimensions?: string;
-    weight?: string;
-    color?: string;
-    finish?: string;
-    thickness?: string;
-  };
-
   @Prop({ type: [String], default: [] })
   images: string[];
 
@@ -85,4 +81,16 @@ export class Product {
 }
 
 export type ProductDocument = HydratedDocument<Product>;
+
 export const ProductSchema = SchemaFactory.createForClass(Product);
+
+// Default list sort: order asc, then newest first
+ProductSchema.index({ order: 1, createdAt: -1 });
+// Duplicate title check on create/update
+ProductSchema.index({ 'title.de': 1 });
+// Products in a category, sorted by display order
+ProductSchema.index({ category: 1, order: 1 });
+// Filter by status (e.g. active) with display order
+ProductSchema.index({ status: 1, order: 1 });
+// Homepage / banner products
+ProductSchema.index({ showOnBanner: 1, order: 1 });

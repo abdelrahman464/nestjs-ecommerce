@@ -9,8 +9,7 @@ import { BRAND_PUBLIC_FIELDS } from '../../brands/constants/brand.constants';
 import { CreateProductDto } from '../dto/create-product.dto';
 import { UpdateProductDto } from '../dto/update-product.dto';
 import { Product, ProductDocument } from '../schemas/product.schema';
-import { SUB_CATEGORY_PUBLIC_FIELDS } from '../../subcategories/constants/subCategory.constants';
-import { PRODUCT_SEARCH_FIELDS } from '../constants/product.constants';
+import { PRODUCT_DEFAULT_SORT, PRODUCT_SEARCH_FIELDS } from '../constants/product.constants';
 
 @Injectable()
 export class ProductRepository {
@@ -21,16 +20,20 @@ export class ProductRepository {
 
   private static readonly populate = [
     { path: 'category', select: CATEGORY_PUBLIC_FIELDS },
-    { path: 'subCategory', select: SUB_CATEGORY_PUBLIC_FIELDS },
     { path: 'brand', select: BRAND_PUBLIC_FIELDS },
   ];
 
   async findAll(
     queryParams: Record<string, any>,
   ): Promise<PaginatedResponseDto<ProductDocument>> {
+    const params = {
+      ...queryParams,
+      sort: queryParams.sort ?? PRODUCT_DEFAULT_SORT,
+    };
+
     const features = new ApiFeatures<ProductDocument>(
       this.productModel.find().populate(ProductRepository.populate),
-      queryParams,
+      params,
       this.productModel,
     );
 
@@ -64,10 +67,29 @@ export class ProductRepository {
     return this.productModel.findOne({ sku: sku.toUpperCase() }).exec();
   }
 
+  async getMaxOrder(): Promise<number> {
+    const product = await this.productModel
+      .findOne()
+      .sort({ order: -1 })
+      .select('order')
+      .lean()
+      .exec();
+
+    return product?.order ?? 0;
+  }
+
   async createProduct(dto: CreateProductDto): Promise<ProductDocument> {
-    return this.productModel.create({
-      dto,
-    });
+    return this.productModel.create(dto);
+  }
+
+  async createProducts(
+    products: Array<CreateProductDto>,
+  ): Promise<ProductDocument[]> {
+    const created: ProductDocument[] = [];
+    for (const product of products) {
+      created.push(await this.productModel.create(product));
+    }
+    return created;
   }
 
   async updateProduct(

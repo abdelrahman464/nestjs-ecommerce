@@ -18,7 +18,9 @@ import { LocalizeMode } from 'src/common/enums/localize-mode.enum';
 import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
 import { PaginatedResponseDto } from '../../shared/dtos/paginated-response.dto';
 import { UserRole } from '../users/enums/user-role.enum';
+import { BulkCreateProductsDto } from './dto/bulk-create-products.dto';
 import { CreateProductDto } from './dto/create-product.dto';
+import { ReorderProductsDto } from './dto/reorder-products.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
 import { ProductDocument } from './schemas/product.schema';
@@ -51,11 +53,29 @@ export class ProductsController {
     return this.productsService.findOne(id);
   }
 
+  @Post('bulk')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @HttpCode(HttpStatus.CREATED)
+  async createBulk(
+    @Body() bulkCreateProductsDto: BulkCreateProductsDto,
+  ): Promise<ProductDocument[]> {
+    return this.productsService.createBulk(bulkCreateProductsDto.products);
+  }
+
   @Post()
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() dto: CreateProductDto): Promise<ProductDocument> {
     return this.productsService.create(dto);
+  }
+
+  //Change order for many products at once using a single request 
+  @Patch('reorder')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  async reorder(
+    @Body() reorderProductsDto: ReorderProductsDto,
+  ): Promise<ProductDocument[]> {
+    return this.productsService.reorder(reorderProductsDto.items);
   }
 
   @Patch(':id')

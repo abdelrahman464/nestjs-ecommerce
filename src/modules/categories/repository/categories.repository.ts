@@ -7,7 +7,7 @@ import { Category, CategoryDocument } from '../schemas/category.schema';
 import { flattenObject } from '../../../common/utils/flatten-object.util';
 import { ApiFeatures } from '../../../common/utils/api-features.utils';
 import { PaginatedResponseDto } from 'src/shared/dtos/paginated-response.dto';
-import { CATEGORY_SEARCH_FIELDS } from '../constants/category.constants';
+import { CATEGORY_SEARCH_FIELDS, CATEGORY_PUBLIC_FIELDS } from '../constants/category.constants';
 
 @Injectable()
 export class CategoryRepository {
@@ -16,11 +16,15 @@ export class CategoryRepository {
     private readonly categoryModel: Model<CategoryDocument>,
   ) {}
 
+  private static readonly populate = [
+    { path: 'parentCategory', select: CATEGORY_PUBLIC_FIELDS },
+  ];
+
   async findAll(
     queryParams: Record<string, any>,
   ): Promise<PaginatedResponseDto<CategoryDocument>> {
     const features = new ApiFeatures<CategoryDocument>(
-      this.categoryModel.find(),
+      this.categoryModel.find().populate(CategoryRepository.populate),
       queryParams,
       this.categoryModel,
     );
@@ -32,20 +36,66 @@ export class CategoryRepository {
       .executePaginated();
   }
 
-  async findById(id: Types.ObjectId | string): Promise<CategoryDocument | null> {
-    return await this.categoryModel.findById(id).exec();
+  async findByParentCategory(
+    parentCategoryId: Types.ObjectId,
+    queryParams: Record<string, any>,
+  ): Promise<PaginatedResponseDto<CategoryDocument>> {
+    return this.findAll({
+      ...queryParams,
+      parentCategory: parentCategoryId.toString(),
+    });
   }
 
-  async findByGermanTitle(title: string): Promise<CategoryDocument | null> {
-    return await this.categoryModel.findOne({ 'title.de': title }).exec();
+  async findById(id: Types.ObjectId | string): Promise<CategoryDocument | null> {
+    return this.categoryModel
+      .findById(id)
+      .populate(CategoryRepository.populate)
+      .exec();
+  }
+
+  async findByGermanTitle(
+    title: string,
+    parentCategory?: Types.ObjectId | string | null,
+  ): Promise<CategoryDocument | null> {
+    const query: Record<string, any> = { 'title.de': title };
+
+    if (parentCategory) {
+      query.parentCategory = parentCategory;
+    } else {
+      query.parentCategory = null;
+    }
+
+    return this.categoryModel.findOne(query).exec();
   }
 
   async findBySlug(slug: string): Promise<CategoryDocument | null> {
-    return await this.categoryModel.findOne({ slug }).exec();
+    return this.categoryModel
+      .findOne({ slug })
+      .populate(CategoryRepository.populate)
+      .exec();
   }
 
-  async createCategory(dto: CreateCategoryDto): Promise<CategoryDocument> {
-    return await this.categoryModel.create(dto);
+  // count the number of categories that have the same parent category (knowing the child count)
+  async countChildrenByParentCategory(
+    parentCategoryId: Types.ObjectId | string,
+  ): Promise<number> {
+    return this.categoryModel.countDocuments({ parentCategory: parentCategoryId }).exec();
+  }
+
+  async createCategory(
+    dto: CreateCategoryDto ,
+  ): Promise<CategoryDocument> {
+    return this.categoryModel.create(dto);
+  }
+
+  async createCategories(
+    categories: Array<CreateCategoryDto>,
+  ): Promise<CategoryDocument[]> {
+    const created: CategoryDocument[] = [];
+    for (const category of categories) {
+      created.push(await this.categoryModel.create(category));
+    }
+    return created;
   }
 
   async updateCategory(
@@ -56,6 +106,7 @@ export class CategoryRepository {
 
     return this.categoryModel
       .findByIdAndUpdate(id, { $set }, { new: true, runValidators: true })
+      .populate(CategoryRepository.populate)
       .exec();
   }
 

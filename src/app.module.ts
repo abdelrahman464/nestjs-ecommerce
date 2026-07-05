@@ -18,7 +18,6 @@ import klarnaConfig from './config/klarna.config';
 import paymentConfig from './config/payment.config';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { CategoriesModule } from './modules/categories/categories.module';
-import { SubCategoriesModule } from './modules/subcategories/subcategories.module';
 import { FilesUploadModule } from './modules/files-upload/files-upload.module';
 import { CartModule } from './modules/cart/cart.module';
 import * as path from 'path';
@@ -63,7 +62,6 @@ import {
     UsersModule,
     FilesUploadModule,
     CategoriesModule,
-    SubCategoriesModule,
     BrandsModule,
     ProductsModule,
     CartModule,

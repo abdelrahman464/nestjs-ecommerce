@@ -15,6 +15,7 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { CategoriesService } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
+import { BulkCreateCategoriesDto } from './dto/bulk-create-categories.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
 import { CategoryDocument } from './schemas/category.schema';
@@ -24,7 +25,6 @@ import { Localize } from 'src/common/decorators/localize.decorator';
 import { LocalizeMode } from 'src/common/enums/localize-mode.enum';
 
 @Controller('categories')
-// @SerializeDto(CategoryResponseDto)
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
@@ -33,8 +33,36 @@ export class CategoriesController {
   async findAll(
     @Query() queryParams: Record<string, any>,
   ): Promise<PaginatedResponseDto<CategoryDocument>> {
-    const categories = await this.categoriesService.findAll(queryParams);
-    return categories;
+    return this.categoriesService.findAll(queryParams);
+  }
+
+  @Public()
+  @Get('parent/:parentCategoryId')
+  async findByParentCategory(
+    @Param('parentCategoryId', ParseObjectIdPipe)
+    parentCategoryId: Types.ObjectId,
+    @Query() queryParams: Record<string, any>,
+  ): Promise<PaginatedResponseDto<CategoryDocument>> {
+    return this.categoriesService.findByParentCategory(
+      parentCategoryId,
+      queryParams,
+    );
+  }
+
+  @Public()
+  @Localize(LocalizeMode.ALL)
+  @Get('slug/:slug')
+  async findOneBySlug(@Param('slug') slug: string): Promise<CategoryDocument> {
+    return this.categoriesService.findBySlug(slug);
+  }
+
+  @Post('bulk')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @HttpCode(HttpStatus.CREATED)
+  async createBulk(
+    @Body() bulkCreateCategoriesDto: BulkCreateCategoriesDto,
+  ): Promise<CategoryDocument[]> {
+    return this.categoriesService.createBulk(bulkCreateCategoriesDto.categories);
   }
 
   @Public()
@@ -43,16 +71,7 @@ export class CategoriesController {
   async findOne(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
   ): Promise<CategoryDocument> {
-    const category = await this.categoriesService.findOne(id);
-    return category;
-  }
-
-  @Public()
-  @Localize(LocalizeMode.ALL)
-  @Get(':slug')
-  async findOneBySlug(@Param('slug') slug: string): Promise<CategoryDocument> {
-    const category = await this.categoriesService.findBySlug(slug);
-    return category;
+    return this.categoriesService.findOne(id);
   }
 
   @Post()
@@ -61,8 +80,7 @@ export class CategoriesController {
   async create(
     @Body() createCategoryDto: CreateCategoryDto,
   ): Promise<CategoryDocument> {
-    const category = await this.categoriesService.create(createCategoryDto);
-    return category;
+    return this.categoriesService.create(createCategoryDto);
   }
 
   @Patch(':id')
@@ -71,8 +89,7 @@ export class CategoriesController {
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() updateCategoryDto: UpdateCategoryDto,
   ): Promise<CategoryDocument> {
-    const category = await this.categoriesService.update(id, updateCategoryDto);
-    return category;
+    return this.categoriesService.update(id, updateCategoryDto);
   }
 
   @Delete(':id')

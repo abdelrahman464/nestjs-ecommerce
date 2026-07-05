@@ -7,7 +7,7 @@ import {
   I18nValidationExceptionFilter,
 } from 'nestjs-i18n';
 
-// handle both HttpException and I18nValidationException 
+// handle both HttpException and I18nValidationException
 // and handle the translation of the message
 @Catch(HttpException)
 export class CustomExceptionFilter extends I18nValidationExceptionFilter {

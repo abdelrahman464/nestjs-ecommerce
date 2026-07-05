@@ -5,6 +5,7 @@ import { I18nHttpException } from '../../common/filters/i18n-http.exception';
 import { generateUniqueSlug } from '../../common/utils/slug.util';
 import { PaginatedResponseDto } from '../../shared/dtos/paginated-response.dto';
 import { CreateProductDto } from './dto/create-product.dto';
+import { ReorderProductItemDto } from './dto/reorder-products.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductRepository } from './repository/products.repository';
 import { Product, ProductDocument } from './schemas/product.schema';
@@ -68,9 +69,13 @@ export class ProductsService {
     }
 
     const slug = await generateUniqueSlug(dto.title['de'], this.productModel);
+    const order =
+      dto.order ?? (await this.productRepository.getMaxOrder()) + 1;
+
     const product = await this.productRepository.createProduct({
       ...dto,
       slug,
+      order,
     });
     if (!product) {
       throw new I18nHttpException(
@@ -79,6 +84,40 @@ export class ProductsService {
       );
     }
     return product;
+  }
+
+  async createBulk(dtos: CreateProductDto[]): Promise<ProductDocument[]> {
+    const prepared: Array<CreateProductDto> = [];
+    let nextOrder = (await this.productRepository.getMaxOrder()) + 1;
+
+    for (const dto of dtos) {
+      const titleExists = await this.productRepository.findByGermanTitle(
+        dto.title['de'],
+      );
+      if (titleExists) {
+        throw new I18nHttpException(
+          HttpStatus.CONFLICT,
+          'product.titleAlreadyExists',
+          { title: dto.title['de'] },
+        );
+      }
+
+      const skuExists = await this.productRepository.findBySku(dto.sku);
+      if (skuExists) {
+        throw new I18nHttpException(
+          HttpStatus.CONFLICT,
+          'product.skuAlreadyExists',
+          { sku: dto.sku },
+        );
+      }
+
+      const slug = await generateUniqueSlug(dto.title['de'], this.productModel);
+      const order = dto.order ?? nextOrder++;
+
+      prepared.push({ ...dto, slug, order });
+    }
+
+    return this.productRepository.createProducts(prepared);
   }
 
   async update(
@@ -129,6 +168,26 @@ export class ProductsService {
         id: id.toString(),
       });
     }
+    return updated;
+  }
+
+  async reorder(items: ReorderProductItemDto[]): Promise<ProductDocument[]> {
+    const updated: ProductDocument[] = [];
+
+    for (const item of items) {
+      await this.findOne(item.productId);
+      const product = await this.productRepository.updateProduct(
+        item.productId,
+        { order: item.order },
+      );
+      if (!product) {
+        throw new I18nHttpException(HttpStatus.NOT_FOUND, 'product.notFound', {
+          id: item.productId.toString(),
+        });
+      }
+      updated.push(product);
+    }
+
     return updated;
   }
 
