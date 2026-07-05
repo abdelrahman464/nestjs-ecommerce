@@ -95,6 +95,33 @@ export class KlarnaStrategy implements IPaymentStrategy {
     return { redirectUrl, reference: order.order_id };
   }
 
+  async resumeCheckout(
+    reference: string,
+    params: CreateCheckoutParams,
+  ): Promise<CheckoutResult> {
+    const apiUrl = this.configService.get<string>('klarna.apiUrl') ?? '';
+    const checkoutUrl =
+      this.configService.get<string>('klarna.checkoutUrl') ?? '';
+
+    const response = await fetch(`${apiUrl}/checkout/v3/orders/${reference}`, {
+      headers: { Authorization: this.buildAuthHeader() },
+    });
+
+    if (response.ok) {
+      const order = (await response.json()) as KlarnaCheckoutOrder;
+      const status = (order.status ?? '').toLowerCase();
+
+      if (status !== 'complete' && status !== 'cancelled' && status !== 'expired') {
+        return {
+          redirectUrl: `${checkoutUrl}/checkout/v3/orders/${reference}/redirect`,
+          reference,
+        };
+      }
+    }
+
+    return this.createCheckout(params);
+  }
+
   verifyWebhook(
     rawBody: Buffer,
     _headers: WebhookHeaders,

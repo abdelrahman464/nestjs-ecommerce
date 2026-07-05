@@ -1,7 +1,9 @@
 {
   "cartEmpty": "Your cart is empty. Add products before checkout.",
   "productNotFound": "Product with ID {id} not found",
-  "checkoutPending": "You already have a pending checkout (payment {id})",
+  "checkoutPending": "You already have a pending checkout (payment {id}). Use POST /payments/checkout/resume to continue paying, or POST /payments/checkout/cancel to start over.",
+  "noPendingCheckout": "You have no pending checkout",
+  "checkoutAlreadyPaid": "This checkout was already paid",
   "invalidAmount": "Product \"{name}\" has no payable price",
   "insufficientStock": "Not enough stock for \"{name}\" (available: {available})",
   "productUnavailable": "Product \"{name}\" is not available for purchase",

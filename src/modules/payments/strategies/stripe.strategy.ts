@@ -71,6 +71,26 @@ export class StripeStrategy implements IPaymentStrategy {
     return { redirectUrl: session.url, reference: session.id };
   }
 
+  async resumeCheckout(
+    reference: string,
+    params: CreateCheckoutParams,
+  ): Promise<CheckoutResult> {
+    const session = await this.stripe.checkout.sessions.retrieve(reference);
+
+    if (session.status === 'open' && session.url) {
+      return { redirectUrl: session.url, reference: session.id };
+    }
+
+    if (session.status === 'complete') {
+      throw new I18nHttpException(
+        HttpStatus.CONFLICT,
+        'payment.checkoutAlreadyPaid',
+      );
+    }
+
+    return this.createCheckout(params);
+  }
+
   verifyWebhook(
     rawBody: Buffer,
     headers: WebhookHeaders,

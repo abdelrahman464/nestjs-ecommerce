@@ -30,3 +30,4 @@ export type ReviewDocument = HydratedDocument<Review>;
 export const ReviewSchema = SchemaFactory.createForClass(Review);
 
 ReviewSchema.index({ product: 1, user: 1 }, { unique: true });
+ReviewSchema.index({ product: 1, createdAt: -1 });

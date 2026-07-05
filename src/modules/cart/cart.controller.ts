@@ -15,7 +15,7 @@ import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
 import type { AuthenticatedUser } from '../../common/types/authenticated-user.type';
 import { CartService } from './cart.service';
 import { AddCartItemDto } from './dto/add-cart-item.dto';
-import { SyncCartDto } from './dto/sync-cart.dto';
+import { BulkAddCartItemsDto } from './dto/bulk-add-cart-items.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
 import { CartDocument } from './schemas/cart.schema';
 
@@ -28,13 +28,13 @@ export class CartController {
     return this.cartService.getCart(authUser.id);
   }
 
-  @Post('sync')
+  @Post('items/bulk')
   @HttpCode(HttpStatus.OK)
-  async syncCart(
+  async addItemsBulk(
     @GetAuthUser() authUser: AuthenticatedUser,
-    @Body() dto: SyncCartDto,
+    @Body() dto: BulkAddCartItemsDto,
   ): Promise<CartDocument> {
-    return this.cartService.syncCart(authUser.id, dto);
+    return this.cartService.addItemsBulk(authUser.id, dto.items);
   }
 
   @Post('items')

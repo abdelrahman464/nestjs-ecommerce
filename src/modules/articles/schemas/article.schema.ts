@@ -43,3 +43,6 @@ export class Article {
 
 export type ArticleDocument = HydratedDocument<Article>;
 export const ArticleSchema = SchemaFactory.createForClass(Article);
+
+ArticleSchema.index({ isPublished: 1, publishedAt: -1 });
+ArticleSchema.index({ 'title.de': 1 });

@@ -1,11 +1,10 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { I18nHttpException } from '../../common/filters/i18n-http.exception';
 import { Product, ProductDocument } from '../products/schemas/product.schema';
 import { ProductStatus } from '../products/enums/product-status.enum';
 import { AddCartItemDto } from './dto/add-cart-item.dto';
-import { SyncCartDto } from './dto/sync-cart.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
 import { CartRepository } from './repository/cart.repository';
 import { CartDocument, CartItem } from './schemas/cart.schema';
@@ -32,29 +31,19 @@ export class CartService {
   async addItem(userId: string, dto: AddCartItemDto): Promise<CartDocument> {
     const product = await this.getAvailableProduct(dto.productId);
     const cart = await this.getOrCreateCart(userId);
-    // Find the existing item in the cart
-    const existing = cart.items.find(
-      (item) => item.product.toString() === dto.productId,
-    );
+    this.applyAddItem(cart, product, dto.productId, dto.quantity);
+    return this.cartRepository.save(cart);
+  }
 
-    // Calculate the next quantity
-    const nextQuantity = (existing?.quantity ?? 0) + dto.quantity;
-    // If the next quantity is greater than the product stock, throw an error
-    if (nextQuantity > product.stock) {
-      throw new I18nHttpException(
-        HttpStatus.BAD_REQUEST,
-        'cart.insufficientStock',
-        { available: product.stock },
-      );
-    }
-    // If the item exists, update the quantity
-    if (existing) {
-      existing.quantity = nextQuantity;
-    } else {
-      cart.items.push({
-        product: product._id,
-        quantity: dto.quantity,
-      } as CartItem);
+  async addItemsBulk(
+    userId: string,
+    items: AddCartItemDto[],
+  ): Promise<CartDocument> {
+    const cart = await this.getOrCreateCart(userId);
+
+    for (const item of items) {
+      const product = await this.getAvailableProduct(item.productId);
+      this.applyAddItem(cart, product, item.productId, item.quantity);
     }
 
     return this.cartRepository.save(cart);
@@ -68,7 +57,7 @@ export class CartService {
     const product = await this.getAvailableProduct(productId);
     const cart = await this.getOrCreateCart(userId);
     const item = cart.items.find(
-      (entry) => entry.product.toString() === productId,
+      (entry) => this.getItemProductId(entry) === productId,
     );
 
     if (!item) {
@@ -86,6 +75,7 @@ export class CartService {
     }
 
     item.quantity = dto.quantity;
+    cart.markModified('items');
     return this.cartRepository.save(cart);
   }
 
@@ -93,7 +83,7 @@ export class CartService {
     const cart = await this.getOrCreateCart(userId);
     const initialLength = cart.items.length;
     cart.items = cart.items.filter(
-      (item) => item.product.toString() !== productId,
+      (item) => this.getItemProductId(item) !== productId,
     );
 
     if (cart.items.length === initialLength) {
@@ -111,49 +101,37 @@ export class CartService {
     return this.cartRepository.save(cart);
   }
 
-  /**
-   * Merge client-side cart items (e.g. from localStorage) into the user's server cart.
-   * Call this once after login/register.
-   */
-  async syncCart(userId: string, dto: SyncCartDto): Promise<CartDocument> {
-    if (!dto.items.length) {
-      return this.getOrCreateCart(userId);
-    }
+  private applyAddItem(
+    cart: CartDocument,
+    product: ProductDocument,
+    productId: string,
+    quantity: number,
+  ): void {
+    const existing = cart.items.find(
+      (item) => this.getItemProductId(item) === productId,
+    );
 
-    const cart = await this.getOrCreateCart(userId);
+    const nextQuantity = existing
+      ? existing.quantity + quantity
+      : quantity;
 
-    for (const incoming of dto.items) {
-      const product = await this.productModel
-        .findById(incoming.productId)
-        .exec();
-      if (
-        !product ||
-        product.status === ProductStatus.INACTIVE ||
-        product.status === ProductStatus.OUT_OF_STOCK ||
-        product.stock <= 0
-      ) {
-        continue;
-      }
-
-      const existing = cart.items.find(
-        (item) => item.product.toString() === incoming.productId,
+    if (nextQuantity > product.stock) {
+      throw new I18nHttpException(
+        HttpStatus.BAD_REQUEST,
+        'cart.insufficientStock',
+        { available: product.stock },
       );
-      const mergedQuantity = (existing?.quantity ?? 0) + incoming.quantity;
-      const finalQuantity = Math.min(mergedQuantity, product.stock);
-
-      if (finalQuantity <= 0) continue;
-
-      if (existing) {
-        existing.quantity = finalQuantity;
-      } else {
-        cart.items.push({
-          product: product._id,
-          quantity: finalQuantity,
-        } as CartItem);
-      }
     }
 
-    return this.cartRepository.save(cart);
+    if (existing) {
+      existing.quantity = nextQuantity;
+      cart.markModified('items');
+    } else {
+      cart.items.push({
+        product: product._id,
+        quantity,
+      } as CartItem);
+    }
   }
 
   private async getAvailableProduct(
@@ -180,5 +158,13 @@ export class CartService {
       );
     }
     return product as unknown as ProductDocument;
+  }
+
+  private getItemProductId(item: CartItem): string {
+    const product = item.product as Types.ObjectId | ProductDocument;
+    if (product instanceof Types.ObjectId) {
+      return product.toString();
+    }
+    return product._id.toString();
   }
 }

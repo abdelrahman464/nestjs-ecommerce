@@ -1,7 +1,9 @@
 {
   "cartEmpty": "Ihr Warenkorb ist leer. Fügen Sie Produkte hinzu, bevor Sie zur Kasse gehen.",
   "productNotFound": "Produkt mit ID {id} nicht gefunden",
-  "checkoutPending": "Sie haben bereits einen ausstehenden Checkout (Zahlung {id})",
+  "checkoutPending": "Sie haben bereits einen ausstehenden Checkout (Zahlung {id}). Nutzen Sie POST /payments/checkout/resume zum Fortsetzen oder POST /payments/checkout/cancel zum Abbrechen.",
+  "noPendingCheckout": "Sie haben keinen ausstehenden Checkout",
+  "checkoutAlreadyPaid": "Dieser Checkout wurde bereits bezahlt",
   "invalidAmount": "Produkt \"{name}\" hat keinen gültigen Preis",
   "insufficientStock": "Nicht genügend Lagerbestand für \"{name}\" (verfügbar: {available})",
   "productUnavailable": "Produkt \"{name}\" ist nicht zum Kauf verfügbar",

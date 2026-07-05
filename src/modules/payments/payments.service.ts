@@ -13,7 +13,10 @@ import { User, UserDocument } from '../users/schemas/user.schema';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
 import { PaymentProvider } from './enums/payment-provider.enum';
 import { PaymentStatus } from './enums/payment-status.enum';
-import { CheckoutLineItem } from './interfaces/payment-types.interface';
+import {
+  CheckoutLineItem,
+  CreateCheckoutParams,
+} from './interfaces/payment-types.interface';
 import { WebhookHeaders } from './interfaces/payment-strategy.interface';
 import { PaymentRepository } from './repository/payment.repository';
 import { PaymentItem } from './schemas/payment-item.schema';
@@ -112,6 +115,51 @@ export class PaymentsService {
       amount,
       currency,
     };
+  }
+
+  async resumeCheckout(userId: string): Promise<CheckoutResponse> {
+    const payment = await this.paymentRepository.findPendingForUser(userId);
+    if (!payment) {
+      throw new I18nHttpException(
+        HttpStatus.NOT_FOUND,
+        'payment.noPendingCheckout',
+      );
+    }
+
+    const params = this.buildCheckoutParamsFromPayment(payment);
+    const strategy = this.strategyRegistry.get(payment.provider);
+
+    const { redirectUrl, reference } = payment.providerReference
+      ? await strategy.resumeCheckout(payment.providerReference, params)
+      : await strategy.createCheckout(params);
+
+    if (reference && reference !== payment.providerReference) {
+      await this.paymentRepository.setReference(payment._id, reference);
+    }
+
+    return {
+      paymentId: payment._id.toString(),
+      redirectUrl,
+      subtotal: payment.subtotal,
+      deliveryFee: payment.deliveryFee,
+      amount: payment.amount,
+      currency: payment.currency,
+    };
+  }
+
+  async cancelPendingCheckout(userId: string): Promise<void> {
+    const payment = await this.paymentRepository.findPendingForUser(userId);
+    if (!payment) {
+      throw new I18nHttpException(
+        HttpStatus.NOT_FOUND,
+        'payment.noPendingCheckout',
+      );
+    }
+
+    await this.paymentRepository.updateStatus(
+      payment._id,
+      PaymentStatus.CANCELLED,
+    );
   }
 
   async handleWebhook(
@@ -319,6 +367,32 @@ We will process your order shortly.`;
       | string;
     if (typeof title === 'string') return title;
     return title?.de ?? title?.en ?? 'Product';
+  }
+
+  private buildCheckoutParamsFromPayment(
+    payment: PaymentDocument,
+  ): CreateCheckoutParams {
+    const paymentId = payment._id.toString();
+    const lineItems: CheckoutLineItem[] = payment.items.map((item) => ({
+      productId: item.product.toString(),
+      name: item.productName,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      totalPrice: item.unitPrice * item.quantity,
+    }));
+
+    return {
+      paymentId,
+      userId: payment.user.toString(),
+      amount: payment.amount,
+      subtotal: payment.subtotal,
+      deliveryFee: payment.deliveryFee,
+      currency: payment.currency,
+      lineItems,
+      successUrl: this.buildUrl('payment.successUrl', paymentId),
+      cancelUrl: this.buildUrl('payment.cancelUrl', paymentId),
+      callbackUrl: this.buildCallbackUrl(payment.provider),
+    };
   }
 
   private buildUrl(configKey: string, paymentId: string): string {

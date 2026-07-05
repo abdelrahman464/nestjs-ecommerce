@@ -55,7 +55,7 @@ export class CookieService {
         ...this.getBaseOptions(),
         maxAge: parseExpireToMs(
           this.config.get<string>('jwt.refreshExpire'),
-          30 * 24 * 60 * 60 * 1000, 
+          30 * 24 * 60 * 60 * 1000, // 30 days
         ),
       },
     };

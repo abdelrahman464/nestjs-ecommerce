@@ -18,6 +18,14 @@ export interface IPaymentStrategy {
   createCheckout(params: CreateCheckoutParams): Promise<CheckoutResult>;
 
   /**
+   * Re-open an existing provider checkout session, or create a new one if expired.
+   */
+  resumeCheckout(
+    reference: string,
+    params: CreateCheckoutParams,
+  ): Promise<CheckoutResult>;
+
+  /**
    * Validate an incoming webhook (signature / hash) and normalize it.
    * MUST throw if the payload cannot be verified.
    */

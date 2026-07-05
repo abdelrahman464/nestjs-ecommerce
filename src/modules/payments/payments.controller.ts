@@ -23,6 +23,24 @@ import { Types } from 'mongoose';
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
+  @Post('checkout/resume')
+  @Roles(UserRole.USER, UserRole.ADMIN, UserRole.MANAGER, UserRole.INSTRUCTOR)
+  @HttpCode(HttpStatus.OK)
+  async resumeCheckout(
+    @GetAuthUser() authUser: AuthenticatedUser,
+  ): Promise<CheckoutResponse> {
+    return this.paymentsService.resumeCheckout(authUser.id);
+  }
+
+  @Post('checkout/cancel')
+  @Roles(UserRole.USER, UserRole.ADMIN, UserRole.MANAGER, UserRole.INSTRUCTOR)
+  @HttpCode(HttpStatus.OK)
+  async cancelPendingCheckout(
+    @GetAuthUser() authUser: AuthenticatedUser,
+  ): Promise<void> {
+    return this.paymentsService.cancelPendingCheckout(authUser.id);
+  }
+
   @Post('checkout')
   @Roles(UserRole.USER, UserRole.ADMIN, UserRole.MANAGER, UserRole.INSTRUCTOR)
   @HttpCode(HttpStatus.CREATED)

@@ -47,3 +47,7 @@ export class Payment {
 
 export type PaymentDocument = HydratedDocument<Payment>;
 export const PaymentSchema = SchemaFactory.createForClass(Payment);
+
+PaymentSchema.index({ user: 1, status: 1 });
+PaymentSchema.index({ user: 1, createdAt: -1 });
+PaymentSchema.index({ status: 1, createdAt: -1 });
