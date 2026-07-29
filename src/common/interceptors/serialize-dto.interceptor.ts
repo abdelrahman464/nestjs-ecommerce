@@ -30,7 +30,6 @@ export class SerializeDtoInterceptor implements NestInterceptor {
         if (!dtoClass) {
           return data;
         }
-        console.log(data);
         if (isPaginatedResponse(data)) {
           return {
             ...data,

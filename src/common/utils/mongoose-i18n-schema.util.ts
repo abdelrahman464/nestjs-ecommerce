@@ -2,7 +2,10 @@
 import { MongooseModule } from '@nestjs/mongoose';
 import * as mongooseI18n from 'mongoose-i18n-localize';
 import { Schema } from 'mongoose';
-import { SUPPORTED_CONTENT_LOCALES } from '../constants/supported-content-locales.constant';
+import {
+  DEFAULT_CONTENT_LOCALE,
+  SUPPORTED_CONTENT_LOCALES,
+} from '../constants/supported-content-locales.constant';
 
 // ✅ No return type annotation — let TypeScript infer it naturally
 export function createI18nMongooseModule(name: string, schema: Schema) {
@@ -12,7 +15,7 @@ export function createI18nMongooseModule(name: string, schema: Schema) {
       useFactory: () => {
         schema.plugin(mongooseI18n, {
           locales: [...SUPPORTED_CONTENT_LOCALES],
-          defaultLocale: SUPPORTED_CONTENT_LOCALES[0],
+          defaultLocale: DEFAULT_CONTENT_LOCALE,
         });
         return schema;
       },

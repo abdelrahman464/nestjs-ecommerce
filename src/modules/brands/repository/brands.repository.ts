@@ -1,3 +1,7 @@
+import {
+  DEFAULT_CONTENT_LOCALE,
+  localizedPath,
+} from '../../../common/constants/supported-content-locales.constant';
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -40,8 +44,17 @@ export class BrandRepository {
     return this.brandModel.findOne({ slug }).exec();
   }
 
+  async findByDefaultLocaleTitle(
+    title: string,
+  ): Promise<BrandDocument | null> {
+    return this.brandModel
+      .findOne({ [localizedPath('title', DEFAULT_CONTENT_LOCALE)]: title })
+      .exec();
+  }
+
+  /** @deprecated Use findByDefaultLocaleTitle */
   async findByGermanTitle(title: string): Promise<BrandDocument | null> {
-    return this.brandModel.findOne({ 'title.de': title }).exec();
+    return this.findByDefaultLocaleTitle(title);
   }
 
   async createBrand(dto: CreateBrandDto): Promise<BrandDocument> {

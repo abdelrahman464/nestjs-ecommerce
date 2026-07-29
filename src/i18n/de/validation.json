@@ -23,5 +23,6 @@
   "price_required": "Preis ist erforderlich",
   "must_be_integer": "Muss eine ganze Zahl sein",
   "must_be_url": "Muss eine gültige URL sein",
-  "must_be_array": "Muss ein Array sein"
+  "must_be_array": "Muss ein Array sein",
+  "price_after_discount_invalid": "priceAfterDiscount darf nicht größer als price sein"
 }

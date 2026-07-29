@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import mongoose, { HydratedDocument, Types } from 'mongoose';
+import { localizedPath } from '../../../common/constants/supported-content-locales.constant';
 import { User } from '../../users/schemas/user.schema';
 
 @Schema({ timestamps: true })
@@ -45,4 +46,4 @@ export type ArticleDocument = HydratedDocument<Article>;
 export const ArticleSchema = SchemaFactory.createForClass(Article);
 
 ArticleSchema.index({ isPublished: 1, publishedAt: -1 });
-ArticleSchema.index({ 'title.de': 1 });
+ArticleSchema.index({ [localizedPath('title')]: 1 });

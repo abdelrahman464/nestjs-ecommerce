@@ -1,13 +1,9 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-
 import mongoose, { HydratedDocument, Types } from 'mongoose';
-
-import { Category } from '../../categories/schemas/category.schema';
-
+import { localizedPath } from '../../../common/constants/supported-content-locales.constant';
 import { Brand } from '../../brands/schemas/brand.schema';
-
+import { Category } from '../../categories/schemas/category.schema';
 import { ProductStatus } from '../enums/product-status.enum';
-
 import { ProductUnit } from '../enums/product-unit.enum';
 
 @Schema({ timestamps: true })
@@ -22,10 +18,11 @@ export class Product {
   @Prop({ type: mongoose.Schema.Types.ObjectId, ref: Brand.name })
   brand?: Types.ObjectId;
 
-  @Prop({ required: true, unique: true, trim: true, i18n: true })
+  /** Unique constraint is on DEFAULT_CONTENT_LOCALE via partial index below. */
+  @Prop({ required: true, trim: true, i18n: true })
   title: string;
 
-  @Prop({ required: true, unique: true, lowercase: true, trim: true })
+  @Prop({ required: true, lowercase: true, trim: true })
   slug: string;
 
   @Prop({ required: true, trim: true, i18n: true })
@@ -34,7 +31,7 @@ export class Product {
   @Prop({ trim: true, i18n: true })
   shortDescription?: string;
 
-  @Prop({ required: true, unique: true, trim: true, uppercase: true })
+  @Prop({ required: true, trim: true, uppercase: true })
   sku: string;
 
   @Prop({ required: true, min: 0 })
@@ -49,19 +46,17 @@ export class Product {
   @Prop({ type: String, enum: ProductUnit, default: ProductUnit.PIECE })
   unit: ProductUnit;
 
-  @Prop({ trim: true, i18n: true })
-  material?: string;
-
   @Prop({ type: [String], default: [] })
   images: string[];
 
   @Prop({ type: String, enum: ProductStatus, default: ProductStatus.ACTIVE })
   status: ProductStatus;
 
-  @Prop({ default: 0 })
+  /** Denormalized from reviews — never accept from client DTOs. */
+  @Prop({ default: 0, min: 0, max: 5 })
   ratingsAverage: number;
 
-  @Prop({ default: 0 })
+  @Prop({ default: 0, min: 0 })
   ratingsQuantity: number;
 
   @Prop({ default: false })
@@ -70,27 +65,32 @@ export class Product {
   @Prop({ default: 0 })
   order: number;
 
-  @Prop({ type: String, i18n: true })
-  metaTitle?: string;
-
-  @Prop({ type: String, i18n: true })
-  metaDescription?: string;
-
-  @Prop({ type: String, i18n: true })
-  keywords?: string;
+  /** Soft delete — null means active row; unique indexes ignore deleted docs. */
+  @Prop({ type: Date, default: null })
+  deletedAt?: Date | null;
 }
 
 export type ProductDocument = HydratedDocument<Product>;
 
 export const ProductSchema = SchemaFactory.createForClass(Product);
 
-// Default list sort: order asc, then newest first
-ProductSchema.index({ order: 1, createdAt: -1 });
-// Duplicate title check on create/update
-ProductSchema.index({ 'title.de': 1 });
-// Products in a category, sorted by display order
-ProductSchema.index({ category: 1, order: 1 });
-// Filter by status (e.g. active) with display order
-ProductSchema.index({ status: 1, order: 1 });
-// Homepage / banner products
-ProductSchema.index({ showOnBanner: 1, order: 1 });
+const notDeleted = { deletedAt: null };
+
+// Canonical title uniqueness (source locale only), soft-delete aware
+ProductSchema.index(
+  { [localizedPath('title')]: 1 },
+  { unique: true, partialFilterExpression: notDeleted },
+);
+ProductSchema.index(
+  { slug: 1 },
+  { unique: true, partialFilterExpression: notDeleted },
+);
+ProductSchema.index(
+  { sku: 1 },
+  { unique: true, partialFilterExpression: notDeleted },
+);
+
+ProductSchema.index({ deletedAt: 1, order: 1, createdAt: -1 });
+ProductSchema.index({ deletedAt: 1, category: 1, order: 1 });
+ProductSchema.index({ deletedAt: 1, status: 1, order: 1 });
+ProductSchema.index({ deletedAt: 1, showOnBanner: 1, order: 1 });

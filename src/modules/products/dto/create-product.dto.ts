@@ -6,7 +6,6 @@ import {
   IsMongoId,
   IsNotEmpty,
   IsNumber,
-  IsObject,
   IsOptional,
   IsString,
   Min,
@@ -15,6 +14,7 @@ import {
 import { Type, Transform } from 'class-transformer';
 import { i18nValidationMessage } from 'nestjs-i18n';
 import { Types } from 'mongoose';
+import { IsPriceAfterDiscountValid } from '../../../common/validators/is-price-after-discount-valid.validator';
 import { FieldLocalizedDto } from '../../../shared/dtos/filed-localized.dto';
 import { ProductStatus } from '../enums/product-status.enum';
 import { ProductUnit } from '../enums/product-unit.enum';
@@ -78,6 +78,7 @@ export class CreateProductDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
+  @IsPriceAfterDiscountValid()
   priceAfterDiscount?: number;
 
   @IsNotEmpty({
@@ -90,11 +91,6 @@ export class CreateProductDto {
   @IsOptional()
   @IsEnum(ProductUnit)
   unit?: ProductUnit;
-
-  @IsOptional()
-  @Type(() => FieldLocalizedDto)
-  @ValidateNested()
-  material?: FieldLocalizedDto;
 
   @IsOptional()
   @IsArray()
@@ -112,19 +108,16 @@ export class CreateProductDto {
   @IsOptional()
   @IsNumber()
   order?: number;
-
-  @IsOptional()
-  @Type(() => FieldLocalizedDto)
-  @ValidateNested()
-  metaTitle?: FieldLocalizedDto;
-
-  @IsOptional()
-  @Type(() => FieldLocalizedDto)
-  @ValidateNested()
-  metaDescription?: FieldLocalizedDto;
-
-  @IsOptional()
-  @Type(() => FieldLocalizedDto)
-  @ValidateNested()
-  keywords?: FieldLocalizedDto;
 }
+
+/** Persistence payload after service enriches slug / order / status. */
+//slug: string - Required after service generates it (DTO had slug?)
+// order: number - Required after defaulting to maxOrder + 1
+// status: ProductStatus - Required after resolveProductStatus()
+// priceAfterDiscount: number - Required after resolvePriceAfterDiscount()
+export type CreateProductPersistence = CreateProductDto & {
+  slug: string;
+  order: number;
+  status: ProductStatus;
+  priceAfterDiscount: number;
+};

@@ -1,6 +1,10 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import {
+  DEFAULT_CONTENT_LOCALE,
+  getLocalizedValue,
+} from '../../common/constants/supported-content-locales.constant';
 import { I18nHttpException } from '../../common/filters/i18n-http.exception';
 import { generateUniqueSlug } from '../../common/utils/slug.util';
 import { PaginatedResponseDto } from '../../shared/dtos/paginated-response.dto';
@@ -47,18 +51,21 @@ export class BrandsService {
   }
 
   async create(dto: CreateBrandDto): Promise<BrandDocument> {
-    const titleExists = await this.brandRepository.findByGermanTitle(
-      dto.title['de'],
-    );
+    const canonicalTitle = getLocalizedValue(dto.title, DEFAULT_CONTENT_LOCALE)!;
+    const titleExists =
+      await this.brandRepository.findByDefaultLocaleTitle(canonicalTitle);
     if (titleExists) {
       throw new I18nHttpException(
         HttpStatus.CONFLICT,
         'brand.titleAlreadyExists',
-        { title: dto.title['de'] },
+        { title: canonicalTitle },
       );
     }
 
-    const slug = await generateUniqueSlug(dto.title['de'], this.brandModel);
+    const slug = await generateUniqueSlug({
+      title: canonicalTitle,
+      model: this.brandModel,
+    });
     const brand = await this.brandRepository.createBrand({ ...dto, slug });
     if (!brand) {
       throw new I18nHttpException(HttpStatus.BAD_REQUEST, 'brand.createFailed');
@@ -77,24 +84,29 @@ export class BrandsService {
       });
     }
 
-    const existingGermanTitle = existing.title?.['de'] ?? undefined;
-    const newGermanTitle = dto.title?.['de'] ?? undefined;
+    const existingCanonicalTitle = getLocalizedValue(
+      existing.title as unknown as Record<string, string>,
+      DEFAULT_CONTENT_LOCALE,
+    );
+    const newCanonicalTitle = dto.title
+      ? getLocalizedValue(dto.title, DEFAULT_CONTENT_LOCALE)
+      : undefined;
 
-    if (newGermanTitle && newGermanTitle !== existingGermanTitle) {
+    if (newCanonicalTitle && newCanonicalTitle !== existingCanonicalTitle) {
       const titleExists =
-        await this.brandRepository.findByGermanTitle(newGermanTitle);
+        await this.brandRepository.findByDefaultLocaleTitle(newCanonicalTitle);
       if (titleExists) {
         throw new I18nHttpException(
           HttpStatus.CONFLICT,
           'brand.titleAlreadyExists',
-          { title: newGermanTitle },
+          { title: newCanonicalTitle },
         );
       }
-      dto.slug = await generateUniqueSlug(
-        newGermanTitle,
-        this.brandModel,
-        existing.id.toString(),
-      );
+      dto.slug = await generateUniqueSlug({
+        title: newCanonicalTitle,
+        model: this.brandModel,
+        excludeId: existing.id.toString(),
+      });
     }
 
     const updated = await this.brandRepository.updateBrand(id, dto);

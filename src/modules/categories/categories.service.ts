@@ -1,13 +1,17 @@
 import { Injectable, HttpStatus } from '@nestjs/common';
-import { I18nHttpException } from '../../common/filters/i18n-http.exception';
+import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import {
+  DEFAULT_CONTENT_LOCALE,
+  getLocalizedValue,
+} from '../../common/constants/supported-content-locales.constant';
+import { I18nHttpException } from '../../common/filters/i18n-http.exception';
+import { generateUniqueSlug } from '../../common/utils/slug.util';
+import { PaginatedResponseDto } from '../../shared/dtos/paginated-response.dto';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
-import { Category, CategoryDocument } from './schemas/category.schema';
 import { CategoryRepository } from './repository/categories.repository';
-import { generateUniqueSlug } from '../../common/utils/slug.util';
-import { InjectModel } from '@nestjs/mongoose';
-import { PaginatedResponseDto } from '../../shared/dtos/paginated-response.dto';
+import { Category, CategoryDocument } from './schemas/category.schema';
 
 @Injectable()
 export class CategoriesService {
@@ -62,19 +66,23 @@ export class CategoriesService {
       await this.ensureParentCategoryExists(dto.parentCategory);
     }
 
-    const titleExists = await this.categoryRepository.findByGermanTitle(
-      dto.title['de'],
+    const canonicalTitle = getLocalizedValue(dto.title, DEFAULT_CONTENT_LOCALE)!;
+    const titleExists = await this.categoryRepository.findByDefaultLocaleTitle(
+      canonicalTitle,
       dto.parentCategory ?? null,
     );
     if (titleExists) {
       throw new I18nHttpException(
         HttpStatus.CONFLICT,
         'category.titleAlreadyExists',
-        { title: dto.title['de'] },
+        { title: canonicalTitle },
       );
     }
 
-    const slug = await generateUniqueSlug(dto.title['de'], this.categoryModel);
+    const slug = await generateUniqueSlug({
+      title: canonicalTitle,
+      model: this.categoryModel,
+    });
     const category = await this.categoryRepository.createCategory({
       ...dto,
       slug,
@@ -97,22 +105,27 @@ export class CategoriesService {
         await this.ensureParentCategoryExists(dto.parentCategory);
       }
 
-      const titleExists = await this.categoryRepository.findByGermanTitle(
-        dto.title['de'],
-        dto.parentCategory ?? null,
-      );
+      const canonicalTitle = getLocalizedValue(
+        dto.title,
+        DEFAULT_CONTENT_LOCALE,
+      )!;
+      const titleExists =
+        await this.categoryRepository.findByDefaultLocaleTitle(
+          canonicalTitle,
+          dto.parentCategory ?? null,
+        );
       if (titleExists) {
         throw new I18nHttpException(
           HttpStatus.CONFLICT,
           'category.titleAlreadyExists',
-          { title: dto.title['de'] },
+          { title: canonicalTitle },
         );
       }
 
-      const slug = await generateUniqueSlug(
-        dto.title['de'],
-        this.categoryModel,
-      );
+      const slug = await generateUniqueSlug({
+        title: canonicalTitle,
+        model: this.categoryModel,
+      });
       prepared.push({ ...dto, slug });
     }
 
@@ -146,29 +159,33 @@ export class CategoriesService {
         ? dto.parentCategory
         : (existing.parentCategory ?? null);
 
-    const existingGermanTitle = existing.title?.['de'] ?? undefined;
-    const newGermanTitle = dto.title?.['de'] ?? undefined;
+    const existingCanonicalTitle = getLocalizedValue(
+      existing.title as unknown as Record<string, string>,
+      DEFAULT_CONTENT_LOCALE,
+    );
+    const newCanonicalTitle = dto.title
+      ? getLocalizedValue(dto.title, DEFAULT_CONTENT_LOCALE)
+      : undefined;
 
-    // if the new german title is different from the existing german title, check if the title already exists
-    if (newGermanTitle && newGermanTitle !== existingGermanTitle) {
-      //make sure the title is not already taken by another category in the same parent category
-      const titleExists = await this.categoryRepository.findByGermanTitle(
-        newGermanTitle,
-        targetParent,
-      );
+    if (newCanonicalTitle && newCanonicalTitle !== existingCanonicalTitle) {
+      const titleExists =
+        await this.categoryRepository.findByDefaultLocaleTitle(
+          newCanonicalTitle,
+          targetParent,
+        );
       if (titleExists && titleExists.id.toString() !== existing.id.toString()) {
         throw new I18nHttpException(
           HttpStatus.CONFLICT,
           'category.titleAlreadyExists',
-          { title: newGermanTitle },
+          { title: newCanonicalTitle },
         );
       }
 
-      dto.slug = await generateUniqueSlug(
-        newGermanTitle,
-        this.categoryModel,
-        existing.id.toString(),
-      );
+      dto.slug = await generateUniqueSlug({
+        title: newCanonicalTitle,
+        model: this.categoryModel,
+        excludeId: existing.id.toString(),
+      });
     }
 
     const updated = await this.categoryRepository.updateCategory(id, dto);
@@ -184,7 +201,6 @@ export class CategoriesService {
   async delete(id: Types.ObjectId): Promise<void> {
     await this.findOne(id);
 
-    // block deletion if the category has children
     const childCount =
       await this.categoryRepository.countChildrenByParentCategory(id);
     if (childCount > 0) {

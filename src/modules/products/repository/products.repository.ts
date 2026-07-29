@@ -1,21 +1,36 @@
 import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { ClientSession, Connection, Model, Types } from 'mongoose';
+import {
+  DEFAULT_CONTENT_LOCALE,
+  localizedPath,
+} from '../../../common/constants/supported-content-locales.constant';
 import { ApiFeatures } from '../../../common/utils/api-features.utils';
 import { flattenObject } from '../../../common/utils/flatten-object.util';
+import { generateUniqueSlug as buildUniqueSlug } from '../../../common/utils/slug.util';
 import { PaginatedResponseDto } from '../../../shared/dtos/paginated-response.dto';
-import { CATEGORY_PUBLIC_FIELDS } from '../../categories/constants/category.constants';
 import { BRAND_PUBLIC_FIELDS } from '../../brands/constants/brand.constants';
-import { CreateProductDto } from '../dto/create-product.dto';
+import { CATEGORY_PUBLIC_FIELDS } from '../../categories/constants/category.constants';
+import {
+  PRODUCT_DEFAULT_SORT,
+  PRODUCT_SEARCH_FIELDS,
+} from '../constants/product.constants';
+import {
+  CreateProductPersistence,
+} from '../dto/create-product.dto';
+import { ReorderProductItemDto } from '../dto/reorder-products.dto';
 import { UpdateProductDto } from '../dto/update-product.dto';
 import { Product, ProductDocument } from '../schemas/product.schema';
-import { PRODUCT_DEFAULT_SORT, PRODUCT_SEARCH_FIELDS } from '../constants/product.constants';
+
+const NOT_DELETED = { deletedAt: null };
 
 @Injectable()
 export class ProductRepository {
   constructor(
     @InjectModel(Product.name)
     private readonly productModel: Model<ProductDocument>,
+    @InjectConnection()
+    private readonly connection: Connection,
   ) {}
 
   private static readonly populate = [
@@ -32,7 +47,9 @@ export class ProductRepository {
     };
 
     const features = new ApiFeatures<ProductDocument>(
-      this.productModel.find().populate(ProductRepository.populate),
+      this.productModel
+        .find({ ...NOT_DELETED })
+        .populate(ProductRepository.populate),
       params,
       this.productModel,
     );
@@ -47,29 +64,38 @@ export class ProductRepository {
 
   async findById(id: Types.ObjectId | string): Promise<ProductDocument | null> {
     return this.productModel
-      .findById(id)
+      .findOne({ _id: id, ...NOT_DELETED })
       .populate(ProductRepository.populate)
       .exec();
   }
 
   async findBySlug(slug: string): Promise<ProductDocument | null> {
     return this.productModel
-      .findOne({ slug })
+      .findOne({ slug, ...NOT_DELETED })
       .populate(ProductRepository.populate)
       .exec();
   }
 
-  async findByGermanTitle(title: string): Promise<ProductDocument | null> {
-    return this.productModel.findOne({ 'title.de': title }).exec();
+  async findByDefaultLocaleTitle(
+    title: string,
+  ): Promise<ProductDocument | null> {
+    return this.productModel
+      .findOne({
+        [localizedPath('title', DEFAULT_CONTENT_LOCALE)]: title,
+        ...NOT_DELETED,
+      })
+      .exec();
   }
 
   async findBySku(sku: string): Promise<ProductDocument | null> {
-    return this.productModel.findOne({ sku: sku.toUpperCase() }).exec();
+    return this.productModel
+      .findOne({ sku: sku.toUpperCase(), ...NOT_DELETED })
+      .exec();
   }
 
   async getMaxOrder(): Promise<number> {
     const product = await this.productModel
-      .findOne()
+      .findOne({ ...NOT_DELETED })
       .sort({ order: -1 })
       .select('order')
       .lean()
@@ -78,32 +104,91 @@ export class ProductRepository {
     return product?.order ?? 0;
   }
 
-  async createProduct(dto: CreateProductDto): Promise<ProductDocument> {
-    return this.productModel.create(dto);
+  async generateUniqueSlug(
+    title: string,
+    excludeId?: string,
+  ): Promise<string> {
+    return buildUniqueSlug({
+      title,
+      model: this.productModel,
+      excludeId,
+      extraFilter: NOT_DELETED,
+    });
+  }
+
+  async createProduct(
+    data: CreateProductPersistence,
+    session?: ClientSession,
+  ): Promise<ProductDocument> {
+    const [product] = await this.productModel.create([data], { session });
+    return product;
   }
 
   async createProducts(
-    products: Array<CreateProductDto>,
+    products: CreateProductPersistence[],
   ): Promise<ProductDocument[]> {
-    const created: ProductDocument[] = [];
-    for (const product of products) {
-      created.push(await this.productModel.create(product));
+    const session = await this.connection.startSession();
+    try {
+      let created: ProductDocument[] = [];
+      await session.withTransaction(async () => {
+        created = await this.productModel.insertMany(products, { session });
+      });
+      return created;
+    } finally {
+      await session.endSession();
     }
-    return created;
   }
 
   async updateProduct(
     id: Types.ObjectId | string,
     dto: UpdateProductDto,
+    session?: ClientSession,
   ): Promise<ProductDocument | null> {
-    const $set = flattenObject(dto);
+    const $set = flattenObject(dto as Record<string, unknown>);
     return this.productModel
-      .findByIdAndUpdate(id, { $set }, { new: true, runValidators: true })
+      .findOneAndUpdate(
+        { _id: id, ...NOT_DELETED },
+        { $set },
+        { new: true, runValidators: true, session },
+      )
       .populate(ProductRepository.populate)
       .exec();
   }
 
-  async deleteProduct(id: Types.ObjectId | string): Promise<void> {
-    await this.productModel.findByIdAndDelete(id).exec();
+  async reorderProducts(
+    items: ReorderProductItemDto[],
+  ): Promise<ProductDocument[]> {
+    const session = await this.connection.startSession();
+    try {
+      let updated: ProductDocument[] = [];
+      await session.withTransaction(async () => {
+        const ops = items.map((item) => ({
+          updateOne: {
+            filter: { _id: item.productId, ...NOT_DELETED },
+            update: { $set: { order: item.order } },
+          },
+        }));
+        await this.productModel.bulkWrite(ops, { session });
+
+        const ids = items.map((item) => item.productId);
+        updated = await this.productModel
+          .find({ _id: { $in: ids }, ...NOT_DELETED })
+          .session(session)
+          .populate(ProductRepository.populate)
+          .exec();
+      });
+      return updated;
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  async softDeleteProduct(id: Types.ObjectId | string): Promise<void> {
+    await this.productModel
+      .findOneAndUpdate(
+        { _id: id, ...NOT_DELETED },
+        { $set: { deletedAt: new Date() } },
+      )
+      .exec();
   }
 }

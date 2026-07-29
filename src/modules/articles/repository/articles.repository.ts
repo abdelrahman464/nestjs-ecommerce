@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { localizedSearchPaths } from '../../../common/constants/supported-content-locales.constant';
 import { ApiFeatures } from '../../../common/utils/api-features.utils';
 import { flattenObject } from '../../../common/utils/flatten-object.util';
 import { PaginatedResponseDto } from '../../../shared/dtos/paginated-response.dto';
@@ -8,6 +9,12 @@ import { USER_PUBLIC_FIELDS } from '../../users/constants/user.constants';
 import { CreateArticleDto } from '../dto/create-article.dto';
 import { UpdateArticleDto } from '../dto/update-article.dto';
 import { Article, ArticleDocument } from '../schemas/article.schema';
+
+const ARTICLE_SEARCH_FIELDS = [
+  ...localizedSearchPaths('title'),
+  'slug',
+  'tags',
+];
 
 @Injectable()
 export class ArticleRepository {
@@ -30,7 +37,7 @@ export class ArticleRepository {
     );
     return features
       .filter()
-      .search(['title.en', 'title.de', 'slug', 'tags'])
+      .search(ARTICLE_SEARCH_FIELDS)
       .sort()
       .paginate()
       .executePaginated();

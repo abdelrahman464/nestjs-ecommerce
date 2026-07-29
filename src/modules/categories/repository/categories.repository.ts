@@ -1,13 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import {
+  DEFAULT_CONTENT_LOCALE,
+  localizedPath,
+} from '../../../common/constants/supported-content-locales.constant';
 import { CreateCategoryDto } from '../dto/create-category.dto';
 import { UpdateCategoryDto } from '../dto/update-category.dto';
 import { Category, CategoryDocument } from '../schemas/category.schema';
 import { flattenObject } from '../../../common/utils/flatten-object.util';
 import { ApiFeatures } from '../../../common/utils/api-features.utils';
 import { PaginatedResponseDto } from 'src/shared/dtos/paginated-response.dto';
-import { CATEGORY_SEARCH_FIELDS, CATEGORY_PUBLIC_FIELDS } from '../constants/category.constants';
+import {
+  CATEGORY_SEARCH_FIELDS,
+  CATEGORY_PUBLIC_FIELDS,
+} from '../constants/category.constants';
 
 @Injectable()
 export class CategoryRepository {
@@ -53,11 +60,13 @@ export class CategoryRepository {
       .exec();
   }
 
-  async findByGermanTitle(
+  async findByDefaultLocaleTitle(
     title: string,
     parentCategory?: Types.ObjectId | string | null,
   ): Promise<CategoryDocument | null> {
-    const query: Record<string, any> = { 'title.de': title };
+    const query: Record<string, any> = {
+      [localizedPath('title', DEFAULT_CONTENT_LOCALE)]: title,
+    };
 
     if (parentCategory) {
       query.parentCategory = parentCategory;
@@ -68,6 +77,14 @@ export class CategoryRepository {
     return this.categoryModel.findOne(query).exec();
   }
 
+  /** @deprecated Use findByDefaultLocaleTitle */
+  async findByGermanTitle(
+    title: string,
+    parentCategory?: Types.ObjectId | string | null,
+  ): Promise<CategoryDocument | null> {
+    return this.findByDefaultLocaleTitle(title, parentCategory);
+  }
+
   async findBySlug(slug: string): Promise<CategoryDocument | null> {
     return this.categoryModel
       .findOne({ slug })
@@ -75,16 +92,15 @@ export class CategoryRepository {
       .exec();
   }
 
-  // count the number of categories that have the same parent category (knowing the child count)
   async countChildrenByParentCategory(
     parentCategoryId: Types.ObjectId | string,
   ): Promise<number> {
-    return this.categoryModel.countDocuments({ parentCategory: parentCategoryId }).exec();
+    return this.categoryModel
+      .countDocuments({ parentCategory: parentCategoryId })
+      .exec();
   }
 
-  async createCategory(
-    dto: CreateCategoryDto ,
-  ): Promise<CategoryDocument> {
+  async createCategory(dto: CreateCategoryDto): Promise<CategoryDocument> {
     return this.categoryModel.create(dto);
   }
 

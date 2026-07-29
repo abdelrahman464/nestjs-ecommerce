@@ -137,7 +137,9 @@ export class CartService {
   private async getAvailableProduct(
     productId: string,
   ): Promise<ProductDocument> {
-    const product = await this.productModel.findById(productId).exec();
+    const product = await this.productModel
+      .findOne({ _id: productId, deletedAt: null })
+      .exec();
     if (!product) {
       throw new I18nHttpException(
         HttpStatus.NOT_FOUND,

@@ -3,5 +3,10 @@
   "notFoundBySlug": "Produkt mit Slug {slug} nicht gefunden",
   "titleAlreadyExists": "Ein Produkt mit dem Titel \"{title}\" existiert bereits",
   "skuAlreadyExists": "Ein Produkt mit der SKU \"{sku}\" existiert bereits",
-  "createFailed": "Produkt konnte nicht erstellt werden"
+  "slugAlreadyExists": "Ein Produkt mit diesem Slug existiert bereits",
+  "createFailed": "Produkt konnte nicht erstellt werden",
+  "categoryNotFound": "Kategorie mit ID {id} nicht gefunden",
+  "brandNotFound": "Marke mit ID {id} nicht gefunden",
+  "invalidPriceAfterDiscount": "priceAfterDiscount darf nicht größer als price sein",
+  "invalidStockStatus": "Status kann nicht active sein, wenn der Bestand 0 ist"
 }

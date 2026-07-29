@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import mongoose, { HydratedDocument, Types } from 'mongoose';
+import { localizedPath } from '../../../common/constants/supported-content-locales.constant';
 
 @Schema({ timestamps: true })
 export class Category {
@@ -26,5 +27,8 @@ export class Category {
 export type CategoryDocument = HydratedDocument<Category>;
 export const CategorySchema = SchemaFactory.createForClass(Category);
 
-CategorySchema.index({ parentCategory: 1, 'title.de': 1 }, { unique: true });
+CategorySchema.index(
+  { parentCategory: 1, [localizedPath('title')]: 1 },
+  { unique: true },
+);
 CategorySchema.index({ parentCategory: 1 });

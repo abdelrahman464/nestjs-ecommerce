@@ -59,7 +59,10 @@ export class ArticlesService {
       );
     }
 
-    const slug = await generateUniqueSlug(dto.title['en'], this.articleModel);
+    const slug = await generateUniqueSlug({
+      title: dto.title['en'],
+      model: this.articleModel,
+    });
     const createPayload: CreateArticleDto & {
       author?: Types.ObjectId;
       slug: string;
@@ -111,11 +114,11 @@ export class ArticlesService {
           { title: newEnglishTitle },
         );
       }
-      dto.slug = await generateUniqueSlug(
-        newEnglishTitle,
-        this.articleModel,
-        existing.id.toString(),
-      );
+      dto.slug = await generateUniqueSlug({
+        title: newEnglishTitle,
+        model: this.articleModel,
+        excludeId: existing.id.toString(),
+      });
     }
 
     if (dto.isPublished && !existing.isPublished && !dto.publishedAt) {

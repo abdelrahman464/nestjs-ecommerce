@@ -39,7 +39,7 @@ async function bootstrap() {
   );
   app.useGlobalInterceptors(
     new WrapDataInterceptor(),
-    // new SerializeDtoInterceptor(reflector),
+    new SerializeDtoInterceptor(reflector),
     new LocalizationInterceptor(reflector),
   );
   app.use(cookieParser());
