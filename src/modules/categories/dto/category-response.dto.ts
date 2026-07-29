@@ -16,6 +16,9 @@ export class CategoryResponseDto {
   description: string;
 
   @Expose()
+  parentCategory: CategoryResponseDto;
+
+  @Expose()
   isActive: boolean;
 
   @Expose()

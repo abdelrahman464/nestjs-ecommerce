@@ -27,6 +27,7 @@ import {
   I18nModule,
   QueryResolver,
 } from 'nestjs-i18n';
+import { SUPPORTED_CONTENT_LOCALES } from './common/constants/supported-content-locales.constant';
 
 @Module({
   imports: [
@@ -45,7 +46,7 @@ import {
       envFilePath: `.env.${process.env.NODE_ENV || 'development'}`,
     }),
     I18nModule.forRoot({
-      fallbackLanguage: process.env.DEFAULT_LANGUAGE ?? 'de',
+      fallbackLanguage: SUPPORTED_CONTENT_LOCALES[0] ?? 'en',
       loaderOptions: {
         path: path.join(__dirname, '/i18n/'),
         watch: true,

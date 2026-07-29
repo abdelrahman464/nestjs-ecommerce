@@ -7,11 +7,11 @@
  * - slug generation
  * - compound unique indexes
  */
-export const SUPPORTED_CONTENT_LOCALES = ['de', 'en'] as const;
+export const SUPPORTED_CONTENT_LOCALES = ['en', 'de'] as const;
 
 export type ContentLocale = (typeof SUPPORTED_CONTENT_LOCALES)[number];
 
-/** Canonical content locale — never hardcode 'de' / 'en' in business logic. */
+/** Canonical content locale — never hardcode 'en' / 'de' in business logic. */
 export const DEFAULT_CONTENT_LOCALE: ContentLocale = SUPPORTED_CONTENT_LOCALES[0];
 
 /** Dot-path for a localized schema field, e.g. localizedPath('title') → 'title.de' */

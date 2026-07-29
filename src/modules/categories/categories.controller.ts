@@ -23,8 +23,11 @@ import { Public } from 'src/common/decorators/public.decorator';
 import { PaginatedResponseDto } from '../../shared/dtos/paginated-response.dto';
 import { Localize } from 'src/common/decorators/localize.decorator';
 import { LocalizeMode } from 'src/common/enums/localize-mode.enum';
+import { SerializeDto } from '../../common/decorators/serializeDto.decorator';
+import { CategoryResponseDto } from './dto/category-response.dto';
 
 @Controller('categories')
+@SerializeDto(CategoryResponseDto)
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
