@@ -7,8 +7,13 @@ import { PaginatedResponseDto } from '../../shared/dtos/paginated-response.dto';
 import { CartService } from '../cart/cart.service';
 import { CartDocument } from '../cart/schemas/cart.schema';
 import { NotificationService } from '../notifications/notification.service';
-import { Product, ProductDocument } from '../products/schemas/product.schema';
 import { ProductStatus } from '../products/enums/product-status.enum';
+import { ProductVariantsService } from '../products/product-variants.service';
+import { ProductVariantRepository } from '../products/repository/product-variants.repository';
+import { Product, ProductDocument } from '../products/schemas/product.schema';
+import {
+  ProductVariantDocument,
+} from '../products/schemas/product-variant.schema';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
 import { PaymentProvider } from './enums/payment-provider.enum';
@@ -42,6 +47,8 @@ export class PaymentsService {
     private readonly configService: ConfigService,
     private readonly cartService: CartService,
     private readonly notificationService: NotificationService,
+    private readonly variantsService: ProductVariantsService,
+    private readonly variantRepository: ProductVariantRepository,
     @InjectModel(Product.name)
     private readonly productModel: Model<ProductDocument>,
     @InjectModel(User.name)
@@ -229,54 +236,48 @@ export class PaymentsService {
     let subtotal = 0;
 
     for (const item of cart.items) {
-      const product = item.product as unknown as ProductDocument;
-      const productId = product._id.toString();
+      const cartVariant = item.variant as unknown as ProductVariantDocument;
+      const variantId = cartVariant._id?.toString?.() ?? String(cartVariant);
 
-      const freshProduct = await this.productModel.findById(productId).exec();
-      if (!freshProduct) {
+      const freshVariant =
+        await this.variantsService.findAvailableById(variantId);
+      const product = await this.productModel
+        .findOne({ _id: freshVariant.product, deletedAt: null })
+        .exec();
+
+      if (!product) {
         throw new I18nHttpException(
           HttpStatus.NOT_FOUND,
           'payment.productNotFound',
-          { id: productId },
+          { id: freshVariant.product.toString() },
         );
       }
 
-      if (
-        freshProduct.status === ProductStatus.INACTIVE ||
-        freshProduct.status === ProductStatus.OUT_OF_STOCK
-      ) {
-        throw new I18nHttpException(
-          HttpStatus.BAD_REQUEST,
-          'payment.productUnavailable',
-          { name: this.resolveProductName(freshProduct) },
-        );
-      }
-
-      if (freshProduct.stock < item.quantity) {
+      if (freshVariant.stock < item.quantity) {
         throw new I18nHttpException(
           HttpStatus.BAD_REQUEST,
           'payment.insufficientStock',
           {
-            name: this.resolveProductName(freshProduct),
-            available: freshProduct.stock,
+            name: this.resolveProductName(product),
+            available: freshVariant.stock,
           },
         );
       }
 
-      const unitPrice = this.resolveUnitPrice(freshProduct);
+      const unitPrice = this.resolveUnitPrice(freshVariant);
       if (unitPrice <= 0) {
         throw new I18nHttpException(
           HttpStatus.BAD_REQUEST,
           'payment.invalidAmount',
-          { name: this.resolveProductName(freshProduct) },
+          { name: this.resolveProductName(product) },
         );
       }
 
       const totalPrice = unitPrice * item.quantity;
-      const productName = this.resolveProductName(freshProduct);
+      const productName = this.resolveProductName(product);
 
       lineItems.push({
-        productId,
+        productId: variantId,
         name: productName,
         quantity: item.quantity,
         unitPrice,
@@ -284,7 +285,8 @@ export class PaymentsService {
       });
 
       paymentItems.push({
-        product: freshProduct._id,
+        variant: freshVariant._id,
+        product: product._id,
         quantity: item.quantity,
         unitPrice,
         productName,
@@ -298,13 +300,15 @@ export class PaymentsService {
 
   private async fulfillOrder(payment: PaymentDocument): Promise<void> {
     for (const item of payment.items) {
-      const product = await this.productModel.findById(item.product).exec();
-      if (!product) continue;
+      const variantId = item.variant ?? item.product;
+      const variant = await this.variantRepository.findById(variantId);
+      if (!variant) continue;
 
-      const newStock = Math.max(0, product.stock - item.quantity);
-      await this.productModel.findByIdAndUpdate(item.product, {
+      const newStock = Math.max(0, variant.stock - item.quantity);
+      await this.variantRepository.updateVariant(variant._id, {
         stock: newStock,
-        ...(newStock === 0 ? { status: ProductStatus.OUT_OF_STOCK } : {}),
+        status:
+          newStock === 0 ? ProductStatus.OUT_OF_STOCK : variant.status,
       });
     }
 
@@ -355,10 +359,10 @@ We will process your order shortly.`;
     return Number.isFinite(fee) && fee >= 0 ? fee : 70;
   }
 
-  private resolveUnitPrice(product: ProductDocument): number {
-    return product.priceAfterDiscount && product.priceAfterDiscount > 0
-      ? product.priceAfterDiscount
-      : product.price;
+  private resolveUnitPrice(variant: ProductVariantDocument): number {
+    return variant.priceAfterDiscount && variant.priceAfterDiscount > 0
+      ? variant.priceAfterDiscount
+      : variant.price;
   }
 
   private resolveProductName(product: ProductDocument): string {

@@ -24,5 +24,6 @@
   "must_be_integer": "Must be an integer",
   "must_be_url": "Must be a valid URL",
   "must_be_array": "Must be an array",
-  "price_after_discount_invalid": "priceAfterDiscount cannot be greater than price"
+  "price_after_discount_invalid": "priceAfterDiscount cannot be greater than price",
+  "barcode_required": "Barcode is required"
 }

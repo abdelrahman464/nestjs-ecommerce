@@ -5,7 +5,7 @@ export class AddCartItemDto {
   @IsMongoId({
     message: i18nValidationMessage('validation.must_be_mongo_id'),
   })
-  productId: string;
+  variantId: string;
 
   @IsInt({ message: i18nValidationMessage('validation.must_be_integer') })
   @Min(1, { message: i18nValidationMessage('validation.min_value', { min: 1 }) })

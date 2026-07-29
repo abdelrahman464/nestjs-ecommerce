@@ -2,21 +2,23 @@ import { Module, OnModuleInit } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { CartModule } from '../cart/cart.module';
+import { ProductsModule } from '../products/products.module';
 import { Product, ProductSchema } from '../products/schemas/product.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { PaymentRepository } from './repository/payment.repository';
 import { Payment, PaymentSchema } from './schemas/payment.schema';
-import { PaymentsWebhookController } from './webhooks/payments-webhook.controller';
+import { KlarnaStrategy } from './strategies/klarna.strategy';
 import { PaymentStrategyRegistry } from './strategies/payment-strategy.registry';
 import { StripeStrategy } from './strategies/stripe.strategy';
-import { KlarnaStrategy } from './strategies/klarna.strategy';
+import { PaymentsWebhookController } from './webhooks/payments-webhook.controller';
 
 @Module({
   imports: [
     ConfigModule,
     CartModule,
+    ProductsModule,
     MongooseModule.forFeature([
       { name: Payment.name, schema: PaymentSchema },
       { name: Product.name, schema: ProductSchema },

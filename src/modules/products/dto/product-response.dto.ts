@@ -1,7 +1,7 @@
 import { Exclude, Expose, Type } from 'class-transformer';
 import { Types } from 'mongoose';
+import { ProductOptionType } from '../enums/product-option-type.enum';
 import { ProductStatus } from '../enums/product-status.enum';
-import { ProductUnit } from '../enums/product-unit.enum';
 
 @Exclude()
 export class ProductResponseDto {
@@ -21,21 +21,6 @@ export class ProductResponseDto {
   shortDescription?: unknown;
 
   @Expose()
-  sku: string;
-
-  @Expose()
-  price: number;
-
-  @Expose()
-  priceAfterDiscount: number;
-
-  @Expose()
-  stock: number;
-
-  @Expose()
-  unit: ProductUnit;
-
-  @Expose()
   images: string[];
 
   @Expose()
@@ -52,6 +37,12 @@ export class ProductResponseDto {
 
   @Expose()
   order: number;
+
+  @Expose()
+  optionDefinitions: unknown;
+
+  @Expose()
+  groupBy?: ProductOptionType | null;
 
   @Expose()
   category: unknown;

@@ -4,6 +4,7 @@ import { Model, Types } from 'mongoose';
 import { ApiFeatures } from '../../../common/utils/api-features.utils';
 import { PaginatedResponseDto } from '../../../shared/dtos/paginated-response.dto';
 import { PRODUCT_PUBLIC_FIELDS } from '../../products/constants/product.constants';
+import { VARIANT_PUBLIC_FIELDS } from '../../products/constants/product.constants';
 import { USER_PUBLIC_FIELDS } from '../../users/constants/user.constants';
 import { PaymentProvider } from '../enums/payment-provider.enum';
 import { PaymentStatus } from '../enums/payment-status.enum';
@@ -31,6 +32,7 @@ export class PaymentRepository {
   private static readonly populate = [
     { path: 'user', select: USER_PUBLIC_FIELDS },
     { path: 'items.product', select: PRODUCT_PUBLIC_FIELDS },
+    { path: 'items.variant', select: VARIANT_PUBLIC_FIELDS },
   ];
 
   async create(data: CreatePaymentPayload): Promise<PaymentDocument> {

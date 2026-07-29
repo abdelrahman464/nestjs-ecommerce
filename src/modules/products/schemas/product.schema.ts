@@ -3,8 +3,12 @@ import mongoose, { HydratedDocument, Types } from 'mongoose';
 import { localizedPath } from '../../../common/constants/supported-content-locales.constant';
 import { Brand } from '../../brands/schemas/brand.schema';
 import { Category } from '../../categories/schemas/category.schema';
+import { ProductOptionType } from '../enums/product-option-type.enum';
 import { ProductStatus } from '../enums/product-status.enum';
-import { ProductUnit } from '../enums/product-unit.enum';
+import {
+  ProductOptionDefinition,
+  ProductOptionDefinitionSchema,
+} from './product-option-definition.schema';
 
 @Schema({ timestamps: true })
 export class Product {
@@ -31,21 +35,6 @@ export class Product {
   @Prop({ trim: true, i18n: true })
   shortDescription?: string;
 
-  @Prop({ required: true, trim: true, uppercase: true })
-  sku: string;
-
-  @Prop({ required: true, min: 0 })
-  price: number;
-
-  @Prop({ default: 0, min: 0 })
-  priceAfterDiscount: number;
-
-  @Prop({ required: true, min: 0, default: 0 })
-  stock: number;
-
-  @Prop({ type: String, enum: ProductUnit, default: ProductUnit.PIECE })
-  unit: ProductUnit;
-
   @Prop({ type: [String], default: [] })
   images: string[];
 
@@ -65,7 +54,17 @@ export class Product {
   @Prop({ default: 0 })
   order: number;
 
-  /** Soft delete — null means active row; unique indexes ignore deleted docs. */
+  /**
+   * Option axes for this product (admin UI + combination validation).
+   * Max 3 types. Empty = simple product with one default variant.
+   */
+  @Prop({ type: [ProductOptionDefinitionSchema], default: [] })
+  optionDefinitions: ProductOptionDefinition[];
+
+  /** Admin table grouping axis (display only). Must be one of optionDefinitions.types. */
+  @Prop({ type: String, enum: ProductOptionType, default: null })
+  groupBy?: ProductOptionType | null;
+
   @Prop({ type: Date, default: null })
   deletedAt?: Date | null;
 }
@@ -76,17 +75,12 @@ export const ProductSchema = SchemaFactory.createForClass(Product);
 
 const notDeleted = { deletedAt: null };
 
-// Canonical title uniqueness (source locale only), soft-delete aware
 ProductSchema.index(
   { [localizedPath('title')]: 1 },
   { unique: true, partialFilterExpression: notDeleted },
 );
 ProductSchema.index(
   { slug: 1 },
-  { unique: true, partialFilterExpression: notDeleted },
-);
-ProductSchema.index(
-  { sku: 1 },
   { unique: true, partialFilterExpression: notDeleted },
 );
 

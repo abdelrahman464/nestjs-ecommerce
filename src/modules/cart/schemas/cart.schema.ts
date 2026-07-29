@@ -1,16 +1,16 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import mongoose, { HydratedDocument, Types } from 'mongoose';
 import { User } from '../../users/schemas/user.schema';
-import { Product } from '../../products/schemas/product.schema';
+import { ProductVariant } from '../../products/schemas/product-variant.schema';
 
 @Schema({ _id: false })
 export class CartItem {
   @Prop({
     type: mongoose.Schema.Types.ObjectId,
-    ref: Product.name,
+    ref: ProductVariant.name,
     required: true,
   })
-  product: Types.ObjectId;
+  variant: Types.ObjectId;
 
   @Prop({ required: true, min: 1 })
   quantity: number;

@@ -1,9 +1,8 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Types } from 'mongoose';
 import { I18nHttpException } from '../../common/filters/i18n-http.exception';
-import { Product, ProductDocument } from '../products/schemas/product.schema';
-import { ProductStatus } from '../products/enums/product-status.enum';
+import { ProductVariantsService } from '../products/product-variants.service';
+import { ProductVariantDocument } from '../products/schemas/product-variant.schema';
 import { AddCartItemDto } from './dto/add-cart-item.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
 import { CartRepository } from './repository/cart.repository';
@@ -13,8 +12,7 @@ import { CartDocument, CartItem } from './schemas/cart.schema';
 export class CartService {
   constructor(
     private readonly cartRepository: CartRepository,
-    @InjectModel(Product.name)
-    private readonly productModel: Model<ProductDocument>,
+    private readonly variantsService: ProductVariantsService,
   ) {}
 
   async getOrCreateCart(userId: string): Promise<CartDocument> {
@@ -29,9 +27,9 @@ export class CartService {
   }
 
   async addItem(userId: string, dto: AddCartItemDto): Promise<CartDocument> {
-    const product = await this.getAvailableProduct(dto.productId);
+    const variant = await this.variantsService.findAvailableById(dto.variantId);
     const cart = await this.getOrCreateCart(userId);
-    this.applyAddItem(cart, product, dto.productId, dto.quantity);
+    this.applyAddItem(cart, variant, dto.quantity);
     return this.cartRepository.save(cart);
   }
 
@@ -42,8 +40,10 @@ export class CartService {
     const cart = await this.getOrCreateCart(userId);
 
     for (const item of items) {
-      const product = await this.getAvailableProduct(item.productId);
-      this.applyAddItem(cart, product, item.productId, item.quantity);
+      const variant = await this.variantsService.findAvailableById(
+        item.variantId,
+      );
+      this.applyAddItem(cart, variant, item.quantity);
     }
 
     return this.cartRepository.save(cart);
@@ -51,26 +51,26 @@ export class CartService {
 
   async updateItem(
     userId: string,
-    productId: string,
+    variantId: string,
     dto: UpdateCartItemDto,
   ): Promise<CartDocument> {
-    const product = await this.getAvailableProduct(productId);
+    const variant = await this.variantsService.findAvailableById(variantId);
     const cart = await this.getOrCreateCart(userId);
     const item = cart.items.find(
-      (entry) => this.getItemProductId(entry) === productId,
+      (entry) => this.getItemVariantId(entry) === variantId,
     );
 
     if (!item) {
       throw new I18nHttpException(HttpStatus.NOT_FOUND, 'cart.itemNotFound', {
-        productId,
+        productId: variantId,
       });
     }
 
-    if (dto.quantity > product.stock) {
+    if (dto.quantity > variant.stock) {
       throw new I18nHttpException(
         HttpStatus.BAD_REQUEST,
         'cart.insufficientStock',
-        { available: product.stock },
+        { available: variant.stock },
       );
     }
 
@@ -79,16 +79,16 @@ export class CartService {
     return this.cartRepository.save(cart);
   }
 
-  async removeItem(userId: string, productId: string): Promise<CartDocument> {
+  async removeItem(userId: string, variantId: string): Promise<CartDocument> {
     const cart = await this.getOrCreateCart(userId);
     const initialLength = cart.items.length;
     cart.items = cart.items.filter(
-      (item) => this.getItemProductId(item) !== productId,
+      (item) => this.getItemVariantId(item) !== variantId,
     );
 
     if (cart.items.length === initialLength) {
       throw new I18nHttpException(HttpStatus.NOT_FOUND, 'cart.itemNotFound', {
-        productId,
+        productId: variantId,
       });
     }
 
@@ -103,23 +103,23 @@ export class CartService {
 
   private applyAddItem(
     cart: CartDocument,
-    product: ProductDocument,
-    productId: string,
+    variant: ProductVariantDocument,
     quantity: number,
   ): void {
+    const variantId = variant._id.toString();
     const existing = cart.items.find(
-      (item) => this.getItemProductId(item) === productId,
+      (item) => this.getItemVariantId(item) === variantId,
     );
 
     const nextQuantity = existing
       ? existing.quantity + quantity
       : quantity;
 
-    if (nextQuantity > product.stock) {
+    if (nextQuantity > variant.stock) {
       throw new I18nHttpException(
         HttpStatus.BAD_REQUEST,
         'cart.insufficientStock',
-        { available: product.stock },
+        { available: variant.stock },
       );
     }
 
@@ -128,45 +128,17 @@ export class CartService {
       cart.markModified('items');
     } else {
       cart.items.push({
-        product: product._id,
+        variant: variant._id,
         quantity,
       } as CartItem);
     }
   }
 
-  private async getAvailableProduct(
-    productId: string,
-  ): Promise<ProductDocument> {
-    const product = await this.productModel
-      .findOne({ _id: productId, deletedAt: null })
-      .exec();
-    if (!product) {
-      throw new I18nHttpException(
-        HttpStatus.NOT_FOUND,
-        'cart.productNotFound',
-        {
-          id: productId,
-        },
-      );
+  private getItemVariantId(item: CartItem): string {
+    const variant = item.variant as Types.ObjectId | ProductVariantDocument;
+    if (variant instanceof Types.ObjectId) {
+      return variant.toString();
     }
-    if (
-      product.status === ProductStatus.INACTIVE ||
-      product.status === ProductStatus.OUT_OF_STOCK ||
-      product.stock <= 0
-    ) {
-      throw new I18nHttpException(
-        HttpStatus.BAD_REQUEST,
-        'cart.productUnavailable',
-      );
-    }
-    return product as unknown as ProductDocument;
-  }
-
-  private getItemProductId(item: CartItem): string {
-    const product = item.product as Types.ObjectId | ProductDocument;
-    if (product instanceof Types.ObjectId) {
-      return product.toString();
-    }
-    return product._id.toString();
+    return variant._id.toString();
   }
 }

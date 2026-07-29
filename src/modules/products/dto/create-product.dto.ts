@@ -8,16 +8,20 @@ import {
   IsNumber,
   IsOptional,
   IsString,
-  Min,
+  ArrayMaxSize,
   ValidateNested,
 } from 'class-validator';
-import { Type, Transform } from 'class-transformer';
+import { Type } from 'class-transformer';
 import { i18nValidationMessage } from 'nestjs-i18n';
 import { Types } from 'mongoose';
-import { IsPriceAfterDiscountValid } from '../../../common/validators/is-price-after-discount-valid.validator';
 import { FieldLocalizedDto } from '../../../shared/dtos/filed-localized.dto';
+import {
+  MAX_PRODUCT_OPTION_TYPES,
+  ProductOptionType,
+} from '../enums/product-option-type.enum';
 import { ProductStatus } from '../enums/product-status.enum';
-import { ProductUnit } from '../enums/product-unit.enum';
+import { CreateDefaultVariantDto } from './create-product-variant.dto';
+import { ProductOptionDefinitionDto } from './product-option-definition.dto';
 
 export class CreateProductDto {
   @IsNotEmpty({
@@ -57,41 +61,6 @@ export class CreateProductDto {
   @ValidateNested()
   shortDescription?: FieldLocalizedDto;
 
-  @IsNotEmpty({
-    message: i18nValidationMessage('validation.sku_required'),
-  })
-  @IsString()
-  @Transform(({ value }) =>
-    value === undefined || value === null
-      ? value
-      : String(value).trim().toUpperCase(),
-  )
-  sku: string;
-
-  @IsNotEmpty({
-    message: i18nValidationMessage('validation.price_required'),
-  })
-  @IsNumber()
-  @Min(0)
-  price: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @IsPriceAfterDiscountValid()
-  priceAfterDiscount?: number;
-
-  @IsNotEmpty({
-    message: i18nValidationMessage('validation.stock_required'),
-  })
-  @IsNumber()
-  @Min(0)
-  stock: number;
-
-  @IsOptional()
-  @IsEnum(ProductUnit)
-  unit?: ProductUnit;
-
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
@@ -108,16 +77,36 @@ export class CreateProductDto {
   @IsOptional()
   @IsNumber()
   order?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_PRODUCT_OPTION_TYPES)
+  @ValidateNested({ each: true })
+  @Type(() => ProductOptionDefinitionDto)
+  optionDefinitions?: ProductOptionDefinitionDto[];
+
+  @IsOptional()
+  @IsEnum(ProductOptionType)
+  groupBy?: ProductOptionType | null;
+
+  /** Initial sellable unit (always created with the product). */
+  @IsDefined({
+    message: i18nValidationMessage('validation.field_required', {
+      field: 'defaultVariant',
+    }),
+  })
+  @ValidateNested()
+  @Type(() => CreateDefaultVariantDto)
+  defaultVariant: CreateDefaultVariantDto;
 }
 
-/** Persistence payload after service enriches slug / order / status. */
-//slug: string - Required after service generates it (DTO had slug?)
-// order: number - Required after defaulting to maxOrder + 1
-// status: ProductStatus - Required after resolveProductStatus()
-// priceAfterDiscount: number - Required after resolvePriceAfterDiscount()
-export type CreateProductPersistence = CreateProductDto & {
+export type CreateProductPersistence = Omit<
+  CreateProductDto,
+  'defaultVariant'
+> & {
   slug: string;
   order: number;
   status: ProductStatus;
-  priceAfterDiscount: number;
+  optionDefinitions: ProductOptionDefinitionDto[];
+  groupBy: ProductOptionType | null;
 };

@@ -87,12 +87,6 @@ export class ProductRepository {
       .exec();
   }
 
-  async findBySku(sku: string): Promise<ProductDocument | null> {
-    return this.productModel
-      .findOne({ sku: sku.toUpperCase(), ...NOT_DELETED })
-      .exec();
-  }
-
   async getMaxOrder(): Promise<number> {
     const product = await this.productModel
       .findOne({ ...NOT_DELETED })
@@ -183,11 +177,15 @@ export class ProductRepository {
     }
   }
 
-  async softDeleteProduct(id: Types.ObjectId | string): Promise<void> {
+  async softDeleteProduct(
+    id: Types.ObjectId | string,
+    session?: ClientSession,
+  ): Promise<void> {
     await this.productModel
       .findOneAndUpdate(
         { _id: id, ...NOT_DELETED },
         { $set: { deletedAt: new Date() } },
+        { session },
       )
       .exec();
   }

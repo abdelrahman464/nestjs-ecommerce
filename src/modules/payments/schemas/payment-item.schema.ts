@@ -1,9 +1,17 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import mongoose, { Types } from 'mongoose';
 import { Product } from '../../products/schemas/product.schema';
+import { ProductVariant } from '../../products/schemas/product-variant.schema';
 
 @Schema({ _id: false })
 export class PaymentItem {
+  @Prop({
+    type: mongoose.Schema.Types.ObjectId,
+    ref: ProductVariant.name,
+    required: true,
+  })
+  variant: Types.ObjectId;
+
   @Prop({
     type: mongoose.Schema.Types.ObjectId,
     ref: Product.name,

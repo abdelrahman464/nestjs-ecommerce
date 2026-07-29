@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { VARIANT_PUBLIC_FIELDS } from '../../products/constants/product.constants';
 import { PRODUCT_PUBLIC_FIELDS } from '../../products/constants/product.constants';
 import { Cart, CartDocument } from '../schemas/cart.schema';
 
@@ -12,8 +13,12 @@ export class CartRepository {
 
   private static readonly populate = [
     {
-      path: 'items.product',
-      select: PRODUCT_PUBLIC_FIELDS,
+      path: 'items.variant',
+      select: VARIANT_PUBLIC_FIELDS,
+      populate: {
+        path: 'product',
+        select: PRODUCT_PUBLIC_FIELDS,
+      },
     },
   ];
 

@@ -1,5 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { Types } from 'mongoose';
+import { InjectConnection } from '@nestjs/mongoose';
+import { Connection, Types } from 'mongoose';
 import {
   DEFAULT_CONTENT_LOCALE,
   getLocalizedValue,
@@ -19,16 +20,20 @@ import {
 import { ReorderProductItemDto } from './dto/reorder-products.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductStatus } from './enums/product-status.enum';
+import { ProductVariantsService } from './product-variants.service';
+import { ProductVariantRepository } from './repository/product-variants.repository';
 import { ProductRepository } from './repository/products.repository';
 import { ProductDocument } from './schemas/product.schema';
-import { resolveProductStatus } from './utils/product-status.util';
 
 @Injectable()
 export class ProductsService {
   constructor(
     private readonly productRepository: ProductRepository,
+    private readonly variantRepository: ProductVariantRepository,
+    private readonly variantsService: ProductVariantsService,
     private readonly categoryRepository: CategoryRepository,
     private readonly brandRepository: BrandRepository,
+    @InjectConnection() private readonly connection: Connection,
   ) {}
 
   async findAll(
@@ -61,8 +66,6 @@ export class ProductsService {
 
   async create(dto: CreateProductDto): Promise<ProductDocument> {
     await this.assertCategoryAndBrand(dto.category, dto.brand);
-    this.assertPriceInvariant(dto.price, dto.priceAfterDiscount);
-    this.assertStockStatusCombo(dto.stock, dto.status);
 
     const canonicalTitle = getLocalizedValue(dto.title, DEFAULT_CONTENT_LOCALE);
     if (!canonicalTitle) {
@@ -74,97 +77,61 @@ export class ProductsService {
     }
 
     await this.assertTitleAvailable(canonicalTitle);
-    await this.assertSkuAvailable(dto.sku);
+
+    const { optionDefinitions, groupBy } =
+      this.variantsService.validateOptionDefinitions(
+        dto.optionDefinitions,
+        dto.groupBy,
+      );
 
     const slug = await this.productRepository.generateUniqueSlug(canonicalTitle);
     const order =
       dto.order ?? (await this.productRepository.getMaxOrder()) + 1;
-    const status = resolveProductStatus(dto.stock, dto.status);
-    const priceAfterDiscount = dto.priceAfterDiscount ?? 0;
 
+    const productPayload: CreateProductPersistence = {
+      category: dto.category,
+      brand: dto.brand,
+      title: dto.title,
+      description: dto.description,
+      shortDescription: dto.shortDescription,
+      images: dto.images,
+      showOnBanner: dto.showOnBanner,
+      slug,
+      order,
+      status: dto.status ?? ProductStatus.ACTIVE,
+      optionDefinitions,
+      groupBy,
+    };
+
+    const session = await this.connection.startSession();
     try {
-      const product = await this.productRepository.createProduct({
-        ...dto,
-        slug,
-        order,
-        status,
-        priceAfterDiscount,
-      });
-      if (!product) {
-        throw new I18nHttpException(
-          HttpStatus.BAD_REQUEST,
-          'product.createFailed',
+      let product!: ProductDocument;
+      await session.withTransaction(async () => {
+        product = await this.productRepository.createProduct(
+          productPayload,
+          session,
         );
-      }
-      return product;
+        await this.variantsService.createDefaultForProduct(
+          product,
+          dto.defaultVariant,
+          session,
+        );
+      });
+      return (await this.productRepository.findById(product._id))!;
     } catch (error) {
       this.rethrowDuplicateKey(error);
       throw error;
+    } finally {
+      await session.endSession();
     }
   }
 
   async createBulk(dtos: CreateProductDto[]): Promise<ProductDocument[]> {
-    const prepared: CreateProductPersistence[] = [];
-    let nextOrder = (await this.productRepository.getMaxOrder()) + 1;
-    const seenTitles = new Set<string>();
-    const seenSkus = new Set<string>();
-
+    const created: ProductDocument[] = [];
     for (const dto of dtos) {
-      await this.assertCategoryAndBrand(dto.category, dto.brand);
-      this.assertPriceInvariant(dto.price, dto.priceAfterDiscount);
-      this.assertStockStatusCombo(dto.stock, dto.status);
-
-      const canonicalTitle = getLocalizedValue(
-        dto.title,
-        DEFAULT_CONTENT_LOCALE,
-      );
-      if (!canonicalTitle) {
-        throw new I18nHttpException(
-          HttpStatus.BAD_REQUEST,
-          'validation.field_required',
-          { field: `title.${DEFAULT_CONTENT_LOCALE}` },
-        );
-      }
-
-      const sku = dto.sku.toUpperCase();
-      if (seenTitles.has(canonicalTitle) || seenSkus.has(sku)) {
-        throw new I18nHttpException(
-          HttpStatus.CONFLICT,
-          seenTitles.has(canonicalTitle)
-            ? 'product.titleAlreadyExists'
-            : 'product.skuAlreadyExists',
-          seenTitles.has(canonicalTitle)
-            ? { title: canonicalTitle }
-            : { sku },
-        );
-      }
-
-      await this.assertTitleAvailable(canonicalTitle);
-      await this.assertSkuAvailable(sku);
-
-      seenTitles.add(canonicalTitle);
-      seenSkus.add(sku);
-
-      const slug =
-        await this.productRepository.generateUniqueSlug(canonicalTitle);
-      const order = dto.order ?? nextOrder++;
-
-      prepared.push({
-        ...dto,
-        sku,
-        slug,
-        order,
-        status: resolveProductStatus(dto.stock, dto.status),
-        priceAfterDiscount: dto.priceAfterDiscount ?? 0,
-      });
+      created.push(await this.create(dto));
     }
-
-    try {
-      return await this.productRepository.createProducts(prepared);
-    } catch (error) {
-      this.rethrowDuplicateKey(error);
-      throw error;
-    }
+    return created;
   }
 
   async update(
@@ -180,17 +147,6 @@ export class ProductsService {
       );
     }
 
-    const nextPrice = dto.price ?? existing.price;
-    const nextDiscount =
-      dto.priceAfterDiscount !== undefined
-        ? dto.priceAfterDiscount
-        : existing.priceAfterDiscount;
-    this.assertPriceInvariant(nextPrice, nextDiscount);
-
-    const nextStock = dto.stock ?? existing.stock;
-    const requestedStatus = dto.status ?? existing.status;
-    this.assertStockStatusCombo(nextStock, requestedStatus);
-
     const existingCanonicalTitle = getLocalizedValue(
       existing.title as unknown as Record<string, string>,
       DEFAULT_CONTENT_LOCALE,
@@ -199,10 +155,7 @@ export class ProductsService {
       ? getLocalizedValue(dto.title, DEFAULT_CONTENT_LOCALE)
       : undefined;
 
-    if (
-      newCanonicalTitle &&
-      newCanonicalTitle !== existingCanonicalTitle
-    ) {
+    if (newCanonicalTitle && newCanonicalTitle !== existingCanonicalTitle) {
       await this.assertTitleAvailable(newCanonicalTitle);
       dto.slug = await this.productRepository.generateUniqueSlug(
         newCanonicalTitle,
@@ -210,15 +163,27 @@ export class ProductsService {
       );
     }
 
-    if (dto.sku && dto.sku.toUpperCase() !== existing.sku) {
-      await this.assertSkuAvailable(dto.sku);
-    }
+    if (dto.optionDefinitions !== undefined || dto.groupBy !== undefined) {
+      const { optionDefinitions, groupBy } =
+        this.variantsService.validateOptionDefinitions(
+          dto.optionDefinitions ??
+            (existing.optionDefinitions as unknown as any),
+          dto.groupBy !== undefined ? dto.groupBy : existing.groupBy,
+        );
+      dto.optionDefinitions = optionDefinitions;
+      dto.groupBy = groupBy;
 
-    dto.status = resolveProductStatus(nextStock, requestedStatus);
-    if (dto.priceAfterDiscount === undefined && dto.price !== undefined) {
-      // keep discount coherent if only price changes and discount would exceed
-      if (existing.priceAfterDiscount > nextPrice) {
-        dto.priceAfterDiscount = nextPrice;
+      // Block definition changes that invalidate existing variant options
+      const variants = await this.variantRepository.findByProductId(id);
+      for (const variant of variants) {
+        const optionsObj =
+          variant.options instanceof Map
+            ? Object.fromEntries(variant.options.entries())
+            : ((variant.options as unknown as Record<string, string>) ?? {});
+        this.variantsService.validateOptionsAgainstDefinitions(
+          { optionDefinitions } as ProductDocument,
+          optionsObj,
+        );
       }
     }
 
@@ -245,7 +210,15 @@ export class ProductsService {
 
   async delete(id: Types.ObjectId): Promise<void> {
     await this.findOne(id);
-    await this.productRepository.softDeleteProduct(id);
+    const session = await this.connection.startSession();
+    try {
+      await session.withTransaction(async () => {
+        await this.variantRepository.softDeleteByProduct(id, session);
+        await this.productRepository.softDeleteProduct(id, session);
+      });
+    } finally {
+      await session.endSession();
+    }
   }
 
   private async assertCategoryAndBrand(
@@ -285,60 +258,19 @@ export class ProductsService {
     }
   }
 
-  private async assertSkuAvailable(sku: string): Promise<void> {
-    const skuExists = await this.productRepository.findBySku(sku);
-    if (skuExists) {
-      throw new I18nHttpException(
-        HttpStatus.CONFLICT,
-        'product.skuAlreadyExists',
-        { sku: sku.toUpperCase() },
-      );
-    }
-  }
-
-  private assertPriceInvariant(
-    price: number,
-    priceAfterDiscount?: number | null,
-  ): void {
-    if (
-      priceAfterDiscount != null &&
-      priceAfterDiscount > price
-    ) {
-      throw new I18nHttpException(
-        HttpStatus.BAD_REQUEST,
-        'product.invalidPriceAfterDiscount',
-      );
-    }
-  }
-
-  private assertStockStatusCombo(
-    stock: number,
-    status?: ProductStatus,
-  ): void {
-    if (status === ProductStatus.ACTIVE && stock <= 0) {
-      throw new I18nHttpException(
-        HttpStatus.BAD_REQUEST,
-        'product.invalidStockStatus',
-      );
-    }
-  }
-
   private rethrowDuplicateKey(error: unknown): void {
     if (!isDuplicateKeyError(error)) return;
 
     const field = getDuplicateKeyField(error) ?? '';
-    if (field.includes('sku')) {
-      throw new I18nHttpException(
-        HttpStatus.CONFLICT,
-        'product.skuAlreadyExists',
-        { sku: '' },
-      );
-    }
     if (field.includes('slug')) {
       throw new I18nHttpException(
         HttpStatus.CONFLICT,
         'product.slugAlreadyExists',
       );
+    }
+    if (field.includes('sku') || field.includes('barcode')) {
+      // bubbled from default variant create inside transaction
+      throw error;
     }
     throw new I18nHttpException(
       HttpStatus.CONFLICT,
