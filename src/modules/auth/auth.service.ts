@@ -31,7 +31,10 @@ export class AuthService {
   ) {}
 
   /** Create tokens, save refresh hash, set httpOnly cookies. */
-  private async signIn(user: UserDocument, res: Response): Promise<UserDocument> {
+  private async signIn(
+    user: UserDocument,
+    res: Response,
+  ): Promise<UserDocument> {
     const payload = this.tokenService.createPayload(user);
     const accessToken = this.tokenService.generateAccessToken(payload);
     const refreshToken = this.tokenService.generateRefreshToken(payload);
@@ -119,7 +122,6 @@ export class AuthService {
         'auth.refreshTokenNotMatched',
       );
     }
-
     return this.signIn(user, res);
   }
 

@@ -100,6 +100,9 @@ export class CreateProductDto {
   defaultVariant: CreateDefaultVariantDto;
 }
 
+/*
+HTTP create body minus defaultVariant (variant is written to another collection)
+*/
 export type CreateProductPersistence = Omit<
   CreateProductDto,
   'defaultVariant'

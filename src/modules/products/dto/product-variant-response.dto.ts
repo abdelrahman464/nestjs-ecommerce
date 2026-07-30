@@ -33,9 +33,6 @@ export class ProductVariantResponseDto {
   unit: ProductUnit;
 
   @Expose()
-  images: string[];
-
-  @Expose()
   status: ProductStatus;
 
   @Expose()

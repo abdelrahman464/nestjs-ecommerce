@@ -27,7 +27,7 @@ import { SerializeDto } from '../../common/decorators/serializeDto.decorator';
 import { CategoryResponseDto } from './dto/category-response.dto';
 
 @Controller('categories')
-@SerializeDto(CategoryResponseDto)
+// @SerializeDto(CategoryResponseDto)
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 

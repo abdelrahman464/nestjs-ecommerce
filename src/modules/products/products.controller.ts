@@ -29,7 +29,7 @@ import { ProductsService } from './products.service';
 import { ProductDocument } from './schemas/product.schema';
 
 @Controller('products')
-@SerializeDto(ProductResponseDto)
+// @SerializeDto(ProductResponseDto)
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 

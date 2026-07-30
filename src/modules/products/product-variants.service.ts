@@ -49,21 +49,27 @@ export class ProductVariantsService {
       productId,
     );
     if (!variant) {
-      throw new I18nHttpException(HttpStatus.NOT_FOUND, 'product.variantNotFound', {
-        id: variantId.toString(),
-      });
+      throw new I18nHttpException(
+        HttpStatus.NOT_FOUND,
+        'product.variantNotFound',
+        {
+          id: variantId.toString(),
+        },
+      );
     }
     return variant;
   }
 
-  async findAvailableById(
-    variantId: string,
-  ): Promise<ProductVariantDocument> {
+  async findAvailableById(variantId: string): Promise<ProductVariantDocument> {
     const variant = await this.variantRepository.findById(variantId);
     if (!variant) {
-      throw new I18nHttpException(HttpStatus.NOT_FOUND, 'product.variantNotFound', {
-        id: variantId,
-      });
+      throw new I18nHttpException(
+        HttpStatus.NOT_FOUND,
+        'product.variantNotFound',
+        {
+          id: variantId,
+        },
+      );
     }
 
     const product = await this.productRepository.findById(variant.product);
@@ -126,6 +132,7 @@ export class ProductVariantsService {
   ): Promise<ProductVariantDocument> {
     const product = await this.requireProduct(productId);
     const options = this.normalizeOptions(dto.options);
+
     this.validateOptionsAgainstDefinitions(product, options);
 
     this.assertPriceInvariant(dto.price, dto.priceAfterDiscount);
@@ -155,6 +162,94 @@ export class ProductVariantsService {
 
     try {
       return await this.variantRepository.createVariant(payload);
+    } catch (error) {
+      this.rethrowDuplicateKey(error);
+      throw error;
+    }
+  }
+
+  async createBulk(
+    productId: Types.ObjectId,
+    dtos: CreateProductVariantDto[],
+  ): Promise<ProductVariantDocument[]> {
+    const product = await this.requireProduct(productId);
+
+    const prepared: CreateProductVariantPersistence[] = [];
+    const seenSkus = new Set<string>();
+    const seenBarcodes = new Set<string>();
+    const seenOptionsKeys = new Set<string>();
+    let defaultCount = 0;
+    let nextOrder = (await this.variantRepository.getMaxOrder(productId)) + 1;
+
+    for (const dto of dtos) {
+      const options = this.normalizeOptions(dto.options);
+      this.validateOptionsAgainstDefinitions(product, options);
+      this.assertPriceInvariant(dto.price, dto.priceAfterDiscount);
+      this.assertStockStatusCombo(dto.stock, dto.status);
+
+      const sku = dto.sku.toUpperCase();
+      const barcode = dto.barcode.trim();
+      const optionsKey = buildOptionsKey(options);
+
+      if (seenSkus.has(sku)) {
+        throw new I18nHttpException(
+          HttpStatus.BAD_REQUEST,
+          'product.skuDuplicateInRequest',
+          { sku },
+        );
+      }
+      if (seenBarcodes.has(barcode)) {
+        throw new I18nHttpException(
+          HttpStatus.BAD_REQUEST,
+          'product.barcodeDuplicateInRequest',
+          { barcode },
+        );
+      }
+      if (seenOptionsKeys.has(optionsKey)) {
+        throw new I18nHttpException(
+          HttpStatus.BAD_REQUEST,
+          'product.variantCombinationDuplicateInRequest',
+        );
+      }
+
+      await this.assertSkuAvailable(sku);
+      await this.assertBarcodeAvailable(barcode);
+
+      seenSkus.add(sku);
+      seenBarcodes.add(barcode);
+      seenOptionsKeys.add(optionsKey);
+
+      const isDefault = dto.isDefault === true;
+      if (isDefault) defaultCount += 1;
+      if (defaultCount > 1) {
+        throw new I18nHttpException(
+          HttpStatus.BAD_REQUEST,
+          'product.multipleDefaultVariants',
+        );
+      }
+
+      const order = dto.order ?? nextOrder++;
+
+      prepared.push({
+        ...dto,
+        sku,
+        barcode,
+        product: productId,
+        options,
+        optionsKey,
+        priceAfterDiscount: dto.priceAfterDiscount ?? 0,
+        status: resolveProductStatus(dto.stock, dto.status),
+        isDefault,
+        order,
+      });
+    }
+
+    try {
+      return await this.variantRepository.createVariantsBulk(
+        productId,
+        prepared,
+        defaultCount === 1,
+      );
     } catch (error) {
       this.rethrowDuplicateKey(error);
       throw error;
@@ -201,6 +296,13 @@ export class ProductVariantsService {
     }
 
     patch.status = resolveProductStatus(nextStock, requestedStatus);
+
+    if (dto.isDefault === false && existing.isDefault) {
+      throw new I18nHttpException(
+        HttpStatus.BAD_REQUEST,
+        'product.cannotUnsetDefaultVariant',
+      );
+    }
 
     if (dto.isDefault === true && !existing.isDefault) {
       await this.variantRepository.clearDefaultFlag(productId);
@@ -277,6 +379,7 @@ export class ProductVariantsService {
   } {
     const optionDefinitions = definitions ?? [];
 
+    // chec
     if (optionDefinitions.length > MAX_PRODUCT_OPTION_TYPES) {
       throw new I18nHttpException(
         HttpStatus.BAD_REQUEST,
@@ -285,6 +388,7 @@ export class ProductVariantsService {
       );
     }
 
+    // check for duplicate option types
     const seen = new Set<string>();
     for (const def of optionDefinitions) {
       if (seen.has(def.type)) {
@@ -296,6 +400,7 @@ export class ProductVariantsService {
       }
       seen.add(def.type);
 
+      // normalize values and check for duplicate values
       const normalizedValues = def.values.map((v) => v.trim().toLowerCase());
       if (new Set(normalizedValues).size !== normalizedValues.length) {
         throw new I18nHttpException(
@@ -306,6 +411,7 @@ export class ProductVariantsService {
       }
     }
 
+    // check for invalid groupBy type
     let nextGroupBy = groupBy ?? null;
     if (nextGroupBy && !seen.has(nextGroupBy)) {
       throw new I18nHttpException(
@@ -314,6 +420,7 @@ export class ProductVariantsService {
         { groupBy: nextGroupBy },
       );
     }
+    // set groupBy to null if no option definitions
     if (!optionDefinitions.length) {
       nextGroupBy = null;
     } else if (!nextGroupBy) {
@@ -356,9 +463,9 @@ export class ProductVariantsService {
         );
       }
     }
-
     for (const [type, value] of Object.entries(options)) {
       const allowed = defMap.get(type as ProductOptionType);
+
       if (!allowed) {
         throw new I18nHttpException(
           HttpStatus.BAD_REQUEST,
@@ -376,6 +483,10 @@ export class ProductVariantsService {
     }
   }
 
+  /**
+   * { "color": "Red", "size": "48" } → { "color": "red", "size": "48" }
+   * {"color": "blue","size": "256","weight":""} → {"color": "blue","size": "256"}
+   * */
   private normalizeOptions(
     options?: Record<string, string>,
   ): Record<string, string> {
@@ -434,10 +545,7 @@ export class ProductVariantsService {
     }
   }
 
-  private assertStockStatusCombo(
-    stock: number,
-    status?: ProductStatus,
-  ): void {
+  private assertStockStatusCombo(stock: number, status?: ProductStatus): void {
     if (status === ProductStatus.ACTIVE && stock <= 0) {
       throw new I18nHttpException(
         HttpStatus.BAD_REQUEST,
@@ -450,9 +558,13 @@ export class ProductVariantsService {
     if (!isDuplicateKeyError(error)) return;
     const field = getDuplicateKeyField(error) ?? '';
     if (field.includes('sku')) {
-      throw new I18nHttpException(HttpStatus.CONFLICT, 'product.skuAlreadyExists', {
-        sku: '',
-      });
+      throw new I18nHttpException(
+        HttpStatus.CONFLICT,
+        'product.skuAlreadyExists',
+        {
+          sku: '',
+        },
+      );
     }
     if (field.includes('barcode')) {
       throw new I18nHttpException(

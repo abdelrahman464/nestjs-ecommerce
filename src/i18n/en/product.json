@@ -23,5 +23,10 @@
   "missingOptionType": "Missing required option \"{type}\"",
   "unknownOptionType": "Unknown option type \"{type}\"",
   "invalidOptionValue": "Invalid value \"{value}\" for option \"{type}\"",
-  "optionDefinitionsConflict": "New option definitions conflict with existing variants"
+  "optionDefinitionsConflict": "New option definitions conflict with existing variants",
+  "multipleDefaultVariants": "Only one variant in the bulk payload can be marked as default",
+  "skuDuplicateInRequest": "SKU \"{sku}\" is duplicated in this request",
+  "barcodeDuplicateInRequest": "Barcode \"{barcode}\" is duplicated in this request",
+  "variantCombinationDuplicateInRequest": "The same option combination appears more than once in this request",
+  "cannotUnsetDefaultVariant": "Cannot unset the default variant. Mark another variant as default first."
 }

@@ -58,10 +58,6 @@ export class CreateProductVariantDto {
   @IsEnum(ProductUnit)
   unit?: ProductUnit;
 
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  images?: string[];
 
   @IsOptional()
   @IsEnum(ProductStatus)

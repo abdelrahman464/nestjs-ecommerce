@@ -43,9 +43,6 @@ export class ProductVariant {
   @Prop({ type: String, enum: ProductUnit, default: ProductUnit.PIECE })
   unit: ProductUnit;
 
-  @Prop({ type: [String], default: [] })
-  images: string[];
-
   @Prop({ type: String, enum: ProductStatus, default: ProductStatus.ACTIVE })
   status: ProductStatus;
 

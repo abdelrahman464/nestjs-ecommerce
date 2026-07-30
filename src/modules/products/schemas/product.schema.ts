@@ -75,6 +75,10 @@ export const ProductSchema = SchemaFactory.createForClass(Product);
 
 const notDeleted = { deletedAt: null };
 
+/*
+Unique only where deletedAt: null
+Soft-delete “T-Shirt” → you can create a new product with the same title
+*/
 ProductSchema.index(
   { [localizedPath('title')]: 1 },
   { unique: true, partialFilterExpression: notDeleted },

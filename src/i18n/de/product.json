@@ -23,5 +23,10 @@
   "missingOptionType": "Erforderliche Option \"{type}\" fehlt",
   "unknownOptionType": "Unbekannter Optionstyp \"{type}\"",
   "invalidOptionValue": "Ungültiger Wert \"{value}\" für Option \"{type}\"",
-  "optionDefinitionsConflict": "Neue Optionsdefinitionen stehen im Konflikt mit vorhandenen Varianten"
+  "optionDefinitionsConflict": "Neue Optionsdefinitionen stehen im Konflikt mit vorhandenen Varianten",
+  "multipleDefaultVariants": "Nur eine Variante in der Bulk-Anfrage darf als Standard markiert sein",
+  "skuDuplicateInRequest": "SKU \"{sku}\" ist in dieser Anfrage doppelt",
+  "barcodeDuplicateInRequest": "Barcode \"{barcode}\" ist in dieser Anfrage doppelt",
+  "variantCombinationDuplicateInRequest": "Dieselbe Optionskombination kommt in dieser Anfrage mehrfach vor",
+  "cannotUnsetDefaultVariant": "Die Standardvariante kann nicht deaktiviert werden. Markieren Sie zuerst eine andere Variante als Standard."
 }

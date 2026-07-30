@@ -23,9 +23,11 @@ export class ProductVariantRepository {
 
   async findByProductId(
     productId: Types.ObjectId | string,
+    session?: ClientSession,
   ): Promise<ProductVariantDocument[]> {
     return this.variantModel
       .find({ product: productId, ...NOT_DELETED })
+      .session(session ?? null)
       .sort({ order: 1, createdAt: 1 })
       .exec();
   }
@@ -51,9 +53,7 @@ export class ProductVariantRepository {
       .exec();
   }
 
-  async findByBarcode(
-    barcode: string,
-  ): Promise<ProductVariantDocument | null> {
+  async findByBarcode(barcode: string): Promise<ProductVariantDocument | null> {
     return this.variantModel
       .findOne({ barcode: barcode.trim(), ...NOT_DELETED })
       .exec();
@@ -67,9 +67,7 @@ export class ProductVariantRepository {
       .exec();
   }
 
-  async countByProduct(
-    productId: Types.ObjectId | string,
-  ): Promise<number> {
+  async countByProduct(productId: Types.ObjectId | string): Promise<number> {
     return this.variantModel
       .countDocuments({ product: productId, ...NOT_DELETED })
       .exec();
@@ -98,6 +96,31 @@ export class ProductVariantRepository {
     session?: ClientSession,
   ): Promise<ProductVariantDocument[]> {
     return this.variantModel.insertMany(data, { session });
+  }
+
+  /**
+   * Atomically insert many variants (and optionally clear the current default).
+   */
+  async createVariantsBulk(
+    productId: Types.ObjectId | string,
+    data: CreateProductVariantPersistence[],
+    clearDefault: boolean,
+  ): Promise<ProductVariantDocument[]> {
+    const session = await this.connection.startSession();
+    try {
+      let created: ProductVariantDocument[] = [];
+      await session.withTransaction(async () => {
+        if (clearDefault) {
+          await this.clearDefaultFlag(productId, session);
+        }
+        created = (await this.variantModel.insertMany(data, {
+          session,
+        })) as unknown as ProductVariantDocument[];
+      });
+      return created;
+    } finally {
+      await session.endSession();
+    }
   }
 
   async updateVariant(
@@ -150,8 +173,9 @@ export class ProductVariantRepository {
             update: { $set: { order: item.order } },
           },
         }));
+        // bulkWrite write all the operations at one request to the database - so this is much faster than calling updateOne for each item
         await this.variantModel.bulkWrite(ops, { session });
-        updated = await this.findByProductId(productId);
+        updated = await this.findByProductId(productId, session);
       });
       return updated;
     } finally {

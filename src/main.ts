@@ -39,11 +39,12 @@ async function bootstrap() {
   );
   app.useGlobalInterceptors(
     new WrapDataInterceptor(),
-    new SerializeDtoInterceptor(reflector),
+    // new SerializeDtoInterceptor(reflector),
     new LocalizationInterceptor(reflector),
   );
   app.use(cookieParser());
   const configService = app.get(ConfigService);
+  
   app.enableCors({
     origin: configService.get<string>('app.frontendUrl'),
     credentials: true,
