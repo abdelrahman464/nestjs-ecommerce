@@ -1,0 +1,9 @@
+{
+  "movementNotFound": "Inventory movement with ID {id} not found",
+  "invalidQuantity": "Quantity must be at least 1",
+  "insufficientStock": "Insufficient stock: available {available}, requested {requested}",
+  "stockConflict": "Stock changed concurrently; please retry",
+  "directionRequired": "direction is required for adjustment movements",
+  "manualTypeNotAllowed": "Movement type \"{type}\" cannot be posted via the manual inventory API",
+  "stockViaInventory": "Do not update stock on the variant; post an inventory movement instead"
+}

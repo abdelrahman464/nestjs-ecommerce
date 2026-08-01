@@ -27,6 +27,8 @@ import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductStatus } from './enums/product-status.enum';
 import { ProductsService } from './products.service';
 import { ProductDocument } from './schemas/product.schema';
+import { GetAuthUser } from '../../common/decorators/get-auth-user.decorator';
+import { AuthenticatedUser } from '../../common/types/authenticated-user.type';
 
 @Controller('products')
 // @SerializeDto(ProductResponseDto)
@@ -69,15 +71,19 @@ export class ProductsController {
   @HttpCode(HttpStatus.CREATED)
   async createBulk(
     @Body() bulkCreateProductsDto: BulkCreateProductsDto,
+    @GetAuthUser() authUser: AuthenticatedUser,
   ): Promise<ProductDocument[]> {
-    return this.productsService.createBulk(bulkCreateProductsDto.products);
+    return this.productsService.createBulk(bulkCreateProductsDto.products, authUser.id);
   }
 
   @Post()
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @HttpCode(HttpStatus.CREATED)
-  async create(@Body() dto: CreateProductDto): Promise<ProductDocument> {
-    return this.productsService.create(dto);
+  async create(
+    @Body() dto: CreateProductDto,
+    @GetAuthUser() authUser: AuthenticatedUser,
+  ): Promise<ProductDocument> {
+    return this.productsService.create(dto, authUser.id);
   }
 
   @Patch('reorder')

@@ -1,10 +1,12 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { ClientSession, Types } from 'mongoose';
+import { InjectConnection } from '@nestjs/mongoose';
+import { ClientSession, Connection, Types } from 'mongoose';
 import { I18nHttpException } from '../../common/filters/i18n-http.exception';
 import {
   getDuplicateKeyField,
   isDuplicateKeyError,
 } from '../../common/utils/mongo-error.util';
+import { InventoryService } from '../inventory/inventory.service';
 import {
   CreateDefaultVariantDto,
   CreateProductVariantDto,
@@ -30,6 +32,8 @@ export class ProductVariantsService {
   constructor(
     private readonly variantRepository: ProductVariantRepository,
     private readonly productRepository: ProductRepository,
+    private readonly inventoryService: InventoryService,
+    @InjectConnection() private readonly connection: Connection,
   ) {}
 
   async findByProduct(
@@ -98,6 +102,7 @@ export class ProductVariantsService {
     product: ProductDocument,
     dto: CreateDefaultVariantDto,
     session?: ClientSession,
+    createdBy?: string | null,
   ): Promise<ProductVariantDocument> {
     await this.assertSkuAvailable(dto.sku);
     await this.assertBarcodeAvailable(dto.barcode);
@@ -106,20 +111,36 @@ export class ProductVariantsService {
 
     const options = this.normalizeOptions(dto.options);
     this.validateOptionsAgainstDefinitions(product, options);
+    const openingStock = dto.stock;
 
+    // Persist stock=0; InventoryService applies opening balance + ledger row.
     const payload: CreateProductVariantPersistence = {
       ...dto,
       product: product._id,
       options,
       optionsKey: buildOptionsKey(options),
       priceAfterDiscount: dto.priceAfterDiscount ?? 0,
-      status: resolveProductStatus(dto.stock, ProductStatus.ACTIVE),
+      stock: 0,
+      status: resolveProductStatus(0, ProductStatus.ACTIVE),
       isDefault: true,
       order: 0,
     };
 
     try {
-      return await this.variantRepository.createVariant(payload, session);
+      const variant = await this.variantRepository.createVariant(
+        payload,
+        session,
+      );
+      await this.inventoryService.postInitialStock({
+        variantId: variant._id,
+        quantity: openingStock,
+        createdBy: createdBy ?? null,
+        session,
+      });
+      return (
+        (await this.variantRepository.findById(variant._id, session)) ??
+        variant
+      );
     } catch (error) {
       this.rethrowDuplicateKey(error);
       throw error;
@@ -129,6 +150,7 @@ export class ProductVariantsService {
   async create(
     productId: Types.ObjectId,
     dto: CreateProductVariantDto,
+    createdBy?: string | null,
   ): Promise<ProductVariantDocument> {
     const product = await this.requireProduct(productId);
     const options = this.normalizeOptions(dto.options);
@@ -144,37 +166,56 @@ export class ProductVariantsService {
     const isDefault = dto.isDefault === true;
     const order =
       dto.order ?? (await this.variantRepository.getMaxOrder(productId)) + 1;
+    const openingStock = dto.stock;
 
-    if (isDefault) {
-      await this.variantRepository.clearDefaultFlag(productId);
-    }
-
-    const payload: CreateProductVariantPersistence = {
-      ...dto,
-      product: productId,
-      options,
-      optionsKey,
-      priceAfterDiscount: dto.priceAfterDiscount ?? 0,
-      status: resolveProductStatus(dto.stock, dto.status),
-      isDefault,
-      order,
-    };
-
+    const session = await this.connection.startSession();
     try {
-      return await this.variantRepository.createVariant(payload);
+      let created!: ProductVariantDocument;
+      await session.withTransaction(async () => {
+        if (isDefault) {
+          await this.variantRepository.clearDefaultFlag(productId, session);
+        }
+
+        const payload: CreateProductVariantPersistence = {
+          ...dto,
+          product: productId,
+          options,
+          optionsKey,
+          priceAfterDiscount: dto.priceAfterDiscount ?? 0,
+          stock: 0,
+          status: resolveProductStatus(0, dto.status),
+          isDefault,
+          order,
+        };
+
+        created = await this.variantRepository.createVariant(payload, session);
+        await this.inventoryService.postInitialStock({
+          variantId: created._id,
+          quantity: openingStock,
+          createdBy: createdBy ?? null,
+          session,
+        });
+      });
+
+      return (await this.variantRepository.findById(created._id)) ?? created;
     } catch (error) {
       this.rethrowDuplicateKey(error);
       throw error;
+    } finally {
+      await session.endSession();
     }
   }
 
   async createBulk(
     productId: Types.ObjectId,
     dtos: CreateProductVariantDto[],
+    createdBy?: string | null,
   ): Promise<ProductVariantDocument[]> {
     const product = await this.requireProduct(productId);
 
-    const prepared: CreateProductVariantPersistence[] = [];
+    const prepared: Array<
+      CreateProductVariantPersistence & { openingStock: number }
+    > = [];
     const seenSkus = new Set<string>();
     const seenBarcodes = new Set<string>();
     const seenOptionsKeys = new Set<string>();
@@ -238,21 +279,44 @@ export class ProductVariantsService {
         options,
         optionsKey,
         priceAfterDiscount: dto.priceAfterDiscount ?? 0,
-        status: resolveProductStatus(dto.stock, dto.status),
+        stock: 0,
+        status: resolveProductStatus(0, dto.status),
         isDefault,
         order,
+        openingStock: dto.stock,
       });
     }
 
+    const session = await this.connection.startSession();
     try {
-      return await this.variantRepository.createVariantsBulk(
-        productId,
-        prepared,
-        defaultCount === 1,
-      );
+      let created: ProductVariantDocument[] = [];
+      await session.withTransaction(async () => {
+        if (defaultCount === 1) {
+          await this.variantRepository.clearDefaultFlag(productId, session);
+        }
+
+        const payloads = prepared.map(({ openingStock: _, ...row }) => row);
+        created = await this.variantRepository.createVariants(
+          payloads,
+          session,
+        );
+
+        for (let i = 0; i < created.length; i++) {
+          await this.inventoryService.postInitialStock({
+            variantId: created[i]._id,
+            quantity: prepared[i].openingStock,
+            createdBy: createdBy ?? null,
+            session,
+          });
+        }
+      });
+
+      return this.variantRepository.findByProductId(productId);
     } catch (error) {
       this.rethrowDuplicateKey(error);
       throw error;
+    } finally {
+      await session.endSession();
     }
   }
 
@@ -271,7 +335,8 @@ export class ProductVariantsService {
         : existing.priceAfterDiscount;
     this.assertPriceInvariant(nextPrice, nextDiscount);
 
-    const nextStock = dto.stock ?? existing.stock;
+    // Stock is inventory-owned; PATCH may only change status relative to current stock.
+    const nextStock = existing.stock;
     const requestedStatus = dto.status ?? existing.status;
     this.assertStockStatusCombo(nextStock, requestedStatus);
 

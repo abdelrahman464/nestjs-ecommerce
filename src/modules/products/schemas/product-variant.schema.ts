@@ -37,6 +37,10 @@ export class ProductVariant {
   @Prop({ default: 0, min: 0 })
   priceAfterDiscount: number;
 
+  /**
+   * Cached on-hand quantity — NOT the audit trail.
+   * Only InventoryService may mutate this field (same TX as inventory_movements).
+   */
   @Prop({ required: true, min: 0, default: 0 })
   stock: number;
 

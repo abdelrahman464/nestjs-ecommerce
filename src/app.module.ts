@@ -20,6 +20,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { FilesUploadModule } from './modules/files-upload/files-upload.module';
 import { CartModule } from './modules/cart/cart.module';
+import { InventoryModule } from './modules/inventory/inventory.module';
 import * as path from 'path';
 import {
   AcceptLanguageResolver,
@@ -65,6 +66,7 @@ import { SUPPORTED_CONTENT_LOCALES } from './common/constants/supported-content-
     CategoriesModule,
     BrandsModule,
     ProductsModule,
+    InventoryModule,
     CartModule,
     ArticlesModule,
     ReviewsModule,

@@ -29,6 +29,7 @@
 ### Project docs
 
 - [Product Variants](docs/PRODUCT_VARIANTS.md) — schema, business rules, API, Postman examples, cart integration
+- Inventory ledger — `POST/GET /api/v1/inventory/...` (append-only `inventory_movements` + cached `product_variants.stock`)
 
 ## Project setup
 

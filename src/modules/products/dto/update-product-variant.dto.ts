@@ -10,8 +10,9 @@ import {
 import { IsPriceAfterDiscountValid } from '../../../common/validators/is-price-after-discount-valid.validator';
 import { CreateProductVariantDto } from './create-product-variant.dto';
 
+/** Stock is omitted — change quantity via InventoryService / POST /inventory/movements. */
 export class UpdateProductVariantDto extends PartialType(
-  OmitType(CreateProductVariantDto, [] as const),
+  OmitType(CreateProductVariantDto, ['stock'] as const),
 ) {
   @IsOptional()
   @IsString()

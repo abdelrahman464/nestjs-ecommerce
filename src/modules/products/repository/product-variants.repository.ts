@@ -34,8 +34,12 @@ export class ProductVariantRepository {
 
   async findById(
     id: Types.ObjectId | string,
+    session?: ClientSession,
   ): Promise<ProductVariantDocument | null> {
-    return this.variantModel.findOne({ _id: id, ...NOT_DELETED }).exec();
+    return this.variantModel
+      .findOne({ _id: id, ...NOT_DELETED })
+      .session(session ?? null)
+      .exec();
   }
 
   async findByIdAndProduct(
@@ -98,31 +102,6 @@ export class ProductVariantRepository {
     return this.variantModel.insertMany(data, { session });
   }
 
-  /**
-   * Atomically insert many variants (and optionally clear the current default).
-   */
-  async createVariantsBulk(
-    productId: Types.ObjectId | string,
-    data: CreateProductVariantPersistence[],
-    clearDefault: boolean,
-  ): Promise<ProductVariantDocument[]> {
-    const session = await this.connection.startSession();
-    try {
-      let created: ProductVariantDocument[] = [];
-      await session.withTransaction(async () => {
-        if (clearDefault) {
-          await this.clearDefaultFlag(productId, session);
-        }
-        created = (await this.variantModel.insertMany(data, {
-          session,
-        })) as unknown as ProductVariantDocument[];
-      });
-      return created;
-    } finally {
-      await session.endSession();
-    }
-  }
-
   async updateVariant(
     id: Types.ObjectId | string,
     dto: UpdateProductVariantDto & {
@@ -150,7 +129,7 @@ export class ProductVariantRepository {
       .updateMany(
         { product: productId, isDefault: true, ...NOT_DELETED },
         { $set: { isDefault: false } },
-        { session },
+        { session: session ?? null },
       )
       .exec();
   }

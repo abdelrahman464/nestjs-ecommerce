@@ -7,6 +7,7 @@ export const PRODUCT_DEFAULT_SORT = 'order,-createdAt';
 
 export const PRODUCT_SEARCH_FIELDS = [
   ...localizedSearchPaths('title'),
+  ...localizedSearchPaths('description'),
   'slug',
 ];
 

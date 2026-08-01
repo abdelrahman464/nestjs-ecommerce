@@ -7,9 +7,8 @@ import { PaginatedResponseDto } from '../../shared/dtos/paginated-response.dto';
 import { CartService } from '../cart/cart.service';
 import { CartDocument } from '../cart/schemas/cart.schema';
 import { NotificationService } from '../notifications/notification.service';
-import { ProductStatus } from '../products/enums/product-status.enum';
+import { InventoryService } from '../inventory/inventory.service';
 import { ProductVariantsService } from '../products/product-variants.service';
-import { ProductVariantRepository } from '../products/repository/product-variants.repository';
 import { Product, ProductDocument } from '../products/schemas/product.schema';
 import {
   ProductVariantDocument,
@@ -48,7 +47,7 @@ export class PaymentsService {
     private readonly cartService: CartService,
     private readonly notificationService: NotificationService,
     private readonly variantsService: ProductVariantsService,
-    private readonly variantRepository: ProductVariantRepository,
+    private readonly inventoryService: InventoryService,
     @InjectModel(Product.name)
     private readonly productModel: Model<ProductDocument>,
     @InjectModel(User.name)
@@ -299,16 +298,22 @@ export class PaymentsService {
   }
 
   private async fulfillOrder(payment: PaymentDocument): Promise<void> {
-    for (const item of payment.items) {
-      const variantId = item.variant ?? item.product;
-      const variant = await this.variantRepository.findById(variantId);
-      if (!variant) continue;
+    const saleItems = payment.items
+      .map((item) => {
+        const variantId = item.variant ?? item.product;
+        if (!variantId) return null;
+        return { variant: variantId, quantity: item.quantity };
+      })
+      .filter(
+        (item): item is { variant: Types.ObjectId; quantity: number } =>
+          item != null,
+      );
 
-      const newStock = Math.max(0, variant.stock - item.quantity);
-      await this.variantRepository.updateVariant(variant._id, {
-        stock: newStock,
-        status:
-          newStock === 0 ? ProductStatus.OUT_OF_STOCK : variant.status,
+    // Ledger + cached stock (idempotent on webhook retry)
+    if (saleItems.length) {
+      await this.inventoryService.postSaleForPayment({
+        paymentId: payment._id,
+        items: saleItems,
       });
     }
 

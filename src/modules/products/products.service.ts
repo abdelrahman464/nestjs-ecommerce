@@ -24,6 +24,7 @@ import { ProductVariantsService } from './product-variants.service';
 import { ProductVariantRepository } from './repository/product-variants.repository';
 import { ProductRepository } from './repository/products.repository';
 import { ProductDocument } from './schemas/product.schema';
+import { AuthenticatedUser } from '../../common/types/authenticated-user.type';
 
 @Injectable()
 export class ProductsService {
@@ -64,7 +65,10 @@ export class ProductsService {
     return product;
   }
 
-  async create(dto: CreateProductDto): Promise<ProductDocument> {
+  async create(
+    dto: CreateProductDto,
+    createdBy: string,
+  ): Promise<ProductDocument> {
     await this.assertCategoryAndBrand(dto.category, dto.brand);
 
     const canonicalTitle = getLocalizedValue(dto.title, DEFAULT_CONTENT_LOCALE);
@@ -84,9 +88,9 @@ export class ProductsService {
         dto.groupBy,
       );
 
-    const slug = await this.productRepository.generateUniqueSlug(canonicalTitle);
-    const order =
-      dto.order ?? (await this.productRepository.getMaxOrder()) + 1;
+    const slug =
+      await this.productRepository.generateUniqueSlug(canonicalTitle);
+    const order = dto.order ?? (await this.productRepository.getMaxOrder()) + 1;
 
     const productPayload: CreateProductPersistence = {
       category: dto.category,
@@ -115,6 +119,7 @@ export class ProductsService {
           product,
           dto.defaultVariant,
           session,
+          createdBy,
         );
       });
       return (await this.productRepository.findById(product._id))!;
@@ -126,10 +131,10 @@ export class ProductsService {
     }
   }
 
-  async createBulk(dtos: CreateProductDto[]): Promise<ProductDocument[]> {
+  async createBulk(dtos: CreateProductDto[], createdBy: string): Promise<ProductDocument[]> {
     const created: ProductDocument[] = [];
     for (const dto of dtos) {
-      created.push(await this.create(dto));
+      created.push(await this.create(dto, createdBy));
     }
     return created;
   }

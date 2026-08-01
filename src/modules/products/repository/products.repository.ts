@@ -15,9 +15,7 @@ import {
   PRODUCT_DEFAULT_SORT,
   PRODUCT_SEARCH_FIELDS,
 } from '../constants/product.constants';
-import {
-  CreateProductPersistence,
-} from '../dto/create-product.dto';
+import { CreateProductPersistence } from '../dto/create-product.dto';
 import { ReorderProductItemDto } from '../dto/reorder-products.dto';
 import { UpdateProductDto } from '../dto/update-product.dto';
 import { Product, ProductDocument } from '../schemas/product.schema';
@@ -98,10 +96,7 @@ export class ProductRepository {
     return product?.order ?? 0;
   }
 
-  async generateUniqueSlug(
-    title: string,
-    excludeId?: string,
-  ): Promise<string> {
+  async generateUniqueSlug(title: string, excludeId?: string): Promise<string> {
     return buildUniqueSlug({
       title,
       model: this.productModel,

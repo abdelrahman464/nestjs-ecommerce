@@ -1,0 +1,9 @@
+{
+  "movementNotFound": "Bestandsbewegung mit ID {id} nicht gefunden",
+  "invalidQuantity": "Menge muss mindestens 1 sein",
+  "insufficientStock": "Nicht genügend Bestand: verfügbar {available}, angefordert {requested}",
+  "stockConflict": "Bestand wurde gleichzeitig geändert; bitte erneut versuchen",
+  "directionRequired": "direction ist für Anpassungen (adjustment) erforderlich",
+  "manualTypeNotAllowed": "Bewegungstyp \"{type}\" kann nicht über die manuelle Inventar-API gebucht werden",
+  "stockViaInventory": "Bestand nicht an der Variante ändern; stattdessen eine Bestandsbewegung buchen"
+}

@@ -10,21 +10,20 @@ import {
   Post,
 } from '@nestjs/common';
 import { Types } from 'mongoose';
+import { GetAuthUser } from 'src/common/decorators/get-auth-user.decorator';
 import { Public } from 'src/common/decorators/public.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
-import { SerializeDto } from 'src/common/decorators/serializeDto.decorator';
+import { AuthenticatedUser } from '../../common/types/authenticated-user.type';
 import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
 import { UserRole } from '../users/enums/user-role.enum';
 import { CreateProductVariantDto } from './dto/create-product-variant.dto';
 import { BulkCreateProductVariantsDto } from './dto/bulk-create-product-variants.dto';
-import { ProductVariantResponseDto } from './dto/product-variant-response.dto';
 import { ReorderVariantsDto } from './dto/reorder-variants.dto';
 import { UpdateProductVariantDto } from './dto/update-product-variant.dto';
 import { ProductVariantsService } from './product-variants.service';
 import { ProductVariantDocument } from './schemas/product-variant.schema';
 
 @Controller('products/:productId/variants')
-// @SerializeDto(ProductVariantResponseDto)
 export class ProductVariantsController {
   constructor(private readonly variantsService: ProductVariantsService) {}
 
@@ -51,8 +50,13 @@ export class ProductVariantsController {
   async createBulk(
     @Param('productId', ParseObjectIdPipe) productId: Types.ObjectId,
     @Body() dto: BulkCreateProductVariantsDto,
+    @GetAuthUser() authUser: AuthenticatedUser,
   ): Promise<ProductVariantDocument[]> {
-    return this.variantsService.createBulk(productId, dto.variants);
+    return this.variantsService.createBulk(
+      productId,
+      dto.variants,
+      authUser.id,
+    );
   }
 
   @Post()
@@ -61,8 +65,9 @@ export class ProductVariantsController {
   async create(
     @Param('productId', ParseObjectIdPipe) productId: Types.ObjectId,
     @Body() dto: CreateProductVariantDto,
+    @GetAuthUser() authUser: AuthenticatedUser,
   ): Promise<ProductVariantDocument> {
-    return this.variantsService.create(productId, dto);
+    return this.variantsService.create(productId, dto, authUser.id);
   }
 
   @Patch('reorder')
