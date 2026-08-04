@@ -38,8 +38,8 @@ export class ProductVariant {
   priceAfterDiscount: number;
 
   /**
-   * Cached on-hand quantity — NOT the audit trail.
-   * Only InventoryService may mutate this field (same TX as inventory_movements).
+   * Cached total on-hand across all warehouses (SUM of inventory_levels).
+   * Only InventoryService may mutate this (same TX as level + movement).
    */
   @Prop({ required: true, min: 0, default: 0 })
   stock: number;

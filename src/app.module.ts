@@ -21,6 +21,7 @@ import { CategoriesModule } from './modules/categories/categories.module';
 import { FilesUploadModule } from './modules/files-upload/files-upload.module';
 import { CartModule } from './modules/cart/cart.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
+import { WarehousesModule } from './modules/warehouses/warehouses.module';
 import * as path from 'path';
 import {
   AcceptLanguageResolver,
@@ -65,6 +66,7 @@ import { SUPPORTED_CONTENT_LOCALES } from './common/constants/supported-content-
     FilesUploadModule,
     CategoriesModule,
     BrandsModule,
+    WarehousesModule,
     ProductsModule,
     InventoryModule,
     CartModule,

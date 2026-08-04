@@ -16,7 +16,9 @@ import { AuthenticatedUser } from '../../common/types/authenticated-user.type';
 import { PaginatedResponseDto } from '../../shared/dtos/paginated-response.dto';
 import { UserRole } from '../users/enums/user-role.enum';
 import { CreateInventoryMovementDto } from './dto/create-inventory-movement.dto';
+import { CreateInventoryTransferDto } from './dto/create-inventory-transfer.dto';
 import { InventoryService } from './inventory.service';
+import { InventoryLevelDocument } from './schemas/inventory-level.schema';
 import { InventoryMovementDocument } from './schemas/inventory-movement.schema';
 
 @Controller('inventory')
@@ -31,6 +33,16 @@ export class InventoryController {
     @GetAuthUser() authUser: AuthenticatedUser,
   ): Promise<InventoryMovementDocument> {
     return this.inventoryService.postManualMovement(dto, authUser.id);
+  }
+
+  @Post('transfers')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @HttpCode(HttpStatus.CREATED)
+  async transfer(
+    @Body() dto: CreateInventoryTransferDto,
+    @GetAuthUser() authUser: AuthenticatedUser,
+  ): Promise<{ out: InventoryMovementDocument; in: InventoryMovementDocument }> {
+    return this.inventoryService.transfer(dto, authUser.id);
   }
 
   @Get('movements/:id')
@@ -57,5 +69,37 @@ export class InventoryController {
     @Query() queryParams: Record<string, unknown>,
   ): Promise<PaginatedResponseDto<InventoryMovementDocument>> {
     return this.inventoryService.findByProduct(productId, queryParams);
+  }
+
+  @Get('warehouses/:warehouseId/movements')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  async findMovementsByWarehouse(
+    @Param('warehouseId', ParseObjectIdPipe) warehouseId: Types.ObjectId,
+    @Query() queryParams: Record<string, unknown>,
+  ): Promise<PaginatedResponseDto<InventoryMovementDocument>> {
+    return this.inventoryService.findMovementsByWarehouse(
+      warehouseId,
+      queryParams,
+    );
+  }
+
+  @Get('variants/:variantId/levels')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  async findLevelsByVariant(
+    @Param('variantId', ParseObjectIdPipe) variantId: Types.ObjectId,
+  ): Promise<{ data: InventoryLevelDocument[]; totalStock: number }> {
+    return this.inventoryService.findLevelsByVariant(variantId);
+  }
+
+  @Get('warehouses/:warehouseId/levels')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  async findLevelsByWarehouse(
+    @Param('warehouseId', ParseObjectIdPipe) warehouseId: Types.ObjectId,
+    @Query() queryParams: Record<string, unknown>,
+  ): Promise<PaginatedResponseDto<InventoryLevelDocument>> {
+    return this.inventoryService.findLevelsByWarehouse(
+      warehouseId,
+      queryParams,
+    );
   }
 }

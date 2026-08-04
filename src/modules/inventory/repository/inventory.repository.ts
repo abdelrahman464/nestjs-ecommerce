@@ -3,17 +3,18 @@ import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
 import { ApiFeatures } from '../../../common/utils/api-features.utils';
 import { PaginatedResponseDto } from '../../../shared/dtos/paginated-response.dto';
+import { INVENTORY_SEARCH_FIELDS } from '../constants/inventory.constants';
 import { InventoryMovementType } from '../enums/inventory-movement-type.enum';
 import { InventoryReferenceType } from '../enums/inventory-reference-type.enum';
 import {
   InventoryMovement,
   InventoryMovementDocument,
 } from '../schemas/inventory-movement.schema';
-import { INVENTORY_SEARCH_FIELDS } from '../constants/inventory.constants';
 
 export type CreateMovementPersistence = {
   variant: Types.ObjectId;
   product: Types.ObjectId;
+  warehouse: Types.ObjectId;
   type: InventoryMovementType;
   quantity: number;
   direction: string;
@@ -52,6 +53,7 @@ export class InventoryRepository {
     referenceId: Types.ObjectId | string;
     variant: Types.ObjectId | string;
     type: InventoryMovementType;
+    warehouse: Types.ObjectId | string;
     session?: ClientSession;
   }): Promise<InventoryMovementDocument | null> {
     return this.movementModel
@@ -60,6 +62,7 @@ export class InventoryRepository {
         referenceId: params.referenceId,
         variant: params.variant,
         type: params.type,
+        warehouse: params.warehouse,
       })
       .session(params.session ?? null)
       .exec();
@@ -69,9 +72,10 @@ export class InventoryRepository {
     variantId: Types.ObjectId | string,
     queryParams: Record<string, unknown>,
   ): Promise<PaginatedResponseDto<InventoryMovementDocument>> {
-    const { type, ...rest } = queryParams;
+    const { type, warehouseId, ...rest } = queryParams;
     const filter: Record<string, unknown> = { variant: variantId };
     if (type) filter.type = type;
+    if (warehouseId) filter.warehouse = warehouseId;
 
     const features = new ApiFeatures<InventoryMovementDocument>(
       this.movementModel.find<InventoryMovementDocument>(filter),
@@ -90,8 +94,30 @@ export class InventoryRepository {
     productId: Types.ObjectId | string,
     queryParams: Record<string, unknown>,
   ): Promise<PaginatedResponseDto<InventoryMovementDocument>> {
-    const { type, ...rest } = queryParams;
+    const { type, warehouseId, ...rest } = queryParams;
     const filter: Record<string, unknown> = { product: productId };
+    if (type) filter.type = type;
+    if (warehouseId) filter.warehouse = warehouseId;
+
+    const features = new ApiFeatures<InventoryMovementDocument>(
+      this.movementModel.find<InventoryMovementDocument>(filter),
+      rest,
+      this.movementModel,
+    )
+      .filter()
+      .search(INVENTORY_SEARCH_FIELDS)
+      .sort()
+      .paginate();
+
+    return features.executePaginated();
+  }
+
+  async findByWarehouse(
+    warehouseId: Types.ObjectId | string,
+    queryParams: Record<string, unknown>,
+  ): Promise<PaginatedResponseDto<InventoryMovementDocument>> {
+    const { type, ...rest } = queryParams;
+    const filter: Record<string, unknown> = { warehouse: warehouseId };
     if (type) filter.type = type;
 
     const features = new ApiFeatures<InventoryMovementDocument>(

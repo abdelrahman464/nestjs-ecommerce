@@ -5,5 +5,6 @@
   "stockConflict": "Bestand wurde gleichzeitig geändert; bitte erneut versuchen",
   "directionRequired": "direction ist für Anpassungen (adjustment) erforderlich",
   "manualTypeNotAllowed": "Bewegungstyp \"{type}\" kann nicht über die manuelle Inventar-API gebucht werden",
-  "stockViaInventory": "Bestand nicht an der Variante ändern; stattdessen eine Bestandsbewegung buchen"
+  "stockViaInventory": "Bestand nicht an der Variante ändern; stattdessen eine Bestandsbewegung buchen",
+  "transferSameWarehouse": "fromWarehouseId und toWarehouseId müssen unterschiedlich sein"
 }

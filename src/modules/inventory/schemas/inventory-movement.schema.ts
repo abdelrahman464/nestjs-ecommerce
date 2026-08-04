@@ -3,22 +3,20 @@ import mongoose, { HydratedDocument, Types } from 'mongoose';
 import { Product } from '../../products/schemas/product.schema';
 import { ProductVariant } from '../../products/schemas/product-variant.schema';
 import { User } from '../../users/schemas/user.schema';
+import { Warehouse } from '../../warehouses/schemas/warehouse.schema';
 import { InventoryDirection } from '../enums/inventory-direction.enum';
 import { InventoryMovementType } from '../enums/inventory-movement-type.enum';
 import { InventoryReferenceType } from '../enums/inventory-reference-type.enum';
 
 /**
- * Append-only inventory ledger entry.
+ * Append-only inventory ledger entry (per warehouse).
  *
- * Design (Approach B):
- * - This collection is the audit trail (source of truth for *why* stock changed).
- * - `product_variants.stock` is a cached balance updated in the **same transaction**
- *   as inserting a movement — only via InventoryService.
- * - Never UPDATE/DELETE movements; correct mistakes with a compensating movement.
+ * - Audit trail for *why* stock changed at a location.
+ * - `inventory_levels.quantity` + `product_variants.stock` updated in the same TX.
+ * - Never UPDATE/DELETE; correct with a compensating movement.
  */
 @Schema({ timestamps: true, collection: 'inventory_movements' })
 export class InventoryMovement {
-
   @Prop({
     type: mongoose.Schema.Types.ObjectId,
     ref: ProductVariant.name,
@@ -26,9 +24,7 @@ export class InventoryMovement {
   })
   variant: Types.ObjectId;
 
-  /**
-   * Lets product-level reports avoid joining every variant first.
-   */
+  /** Denormalized product id for product-level reports. */
   @Prop({
     type: mongoose.Schema.Types.ObjectId,
     ref: Product.name,
@@ -36,6 +32,16 @@ export class InventoryMovement {
   })
   product: Types.ObjectId;
 
+  /**
+   * Location where this movement applied.
+   * Required for multi-warehouse; transfers use two rows (one per warehouse).
+   */
+  @Prop({
+    type: mongoose.Schema.Types.ObjectId,
+    ref: Warehouse.name,
+    required: true,
+  })
+  warehouse: Types.ObjectId;
 
   @Prop({
     type: String,
@@ -46,12 +52,11 @@ export class InventoryMovement {
 
   /**
    * Absolute units moved — always > 0.
-   * Sign lives on `direction` / `delta`, never on this field.
+   * Sign lives on `direction` / `delta`.
    */
   @Prop({ required: true, min: 1 })
   quantity: number;
 
-  /** Whether stock increased (`in`) or decreased (`out`). */
   @Prop({
     type: String,
     enum: InventoryDirection,
@@ -59,28 +64,23 @@ export class InventoryMovement {
   })
   direction: InventoryDirection;
 
-  /**
-   * Signed effect on balance: +quantity for `in`, -quantity for `out`.
-   * Stored so reports can SUM(delta) without re-deriving direction.
-   */
+  /** Signed effect: +quantity for `in`, -quantity for `out`. */
   @Prop({ required: true })
   delta: number;
 
-  /** Cached stock on the variant immediately before this movement. */
+  /**
+   * Warehouse level quantity before this movement (not the global variant total).
+   * variant.stock is maintained separately via $inc by the same delta.
+   */
   @Prop({ required: true, min: 0 })
   balanceBefore: number;
 
-  /**
-   * Cached stock on the variant immediately after this movement.
-   * Must equal balanceBefore + delta and never go below 0.
-   */
+  /** Warehouse level quantity after this movement. */
   @Prop({ required: true, min: 0 })
   balanceAfter: number;
 
-  /** Optional human note */
   @Prop({ trim: true })
   reason?: string;
-
 
   @Prop({
     type: String,
@@ -91,12 +91,10 @@ export class InventoryMovement {
 
   /**
    * Linked document when applicable:
-   * - manual → optional external id
    * - webhook → payment id
    * - variant_create → variant id
-   * - manual_order → order id (future) -admin created order for a customer-
-   *
-   * Used with the unique partial index for idempotent webhook retries.
+   * - transfer → shared id for the out/in pair
+   * - manual_order → order id (future)
    */
   @Prop({
     type: mongoose.Schema.Types.ObjectId,
@@ -104,10 +102,6 @@ export class InventoryMovement {
   })
   referenceId?: Types.ObjectId | null;
 
-  /**
-   * Admin/manager who performed the change when a human acted.
-   * Omitted for automated webhook fulfillment (referenceType explains the actor).
-   */
   @Prop({
     type: mongoose.Schema.Types.ObjectId,
     ref: User.name,
@@ -121,24 +115,19 @@ export type InventoryMovementDocument = HydratedDocument<InventoryMovement>;
 export const InventoryMovementSchema =
   SchemaFactory.createForClass(InventoryMovement);
 
-// ---------------------------------------------------------------------------
-// Indexes
-// ---------------------------------------------------------------------------
-
 InventoryMovementSchema.index({ variant: 1, createdAt: -1 });
-
 InventoryMovementSchema.index({ product: 1, createdAt: -1 });
+InventoryMovementSchema.index({ warehouse: 1, createdAt: -1 });
 
 /**
- * Idempotency for sales (and any referenced movement).
- * Partial: only documents with a real referenceId participate —
- * plain manual restocks without a reference can repeat freely.
+ * Idempotency + transfer pairs.
+ * Includes `warehouse` so transfer out@A and in@B can share referenceId.
  *
- * Webhook retry with the same payment+variant+sale ⇒ duplicate key /
- * find-existing → treat as success (no double decrement).
+ * Ops: drop the old unique index without warehouse if it still exists:
+ *   referenceType_1_referenceId_1_variant_1_type_1
  */
 InventoryMovementSchema.index(
-  { referenceType: 1, referenceId: 1, variant: 1, type: 1 },
+  { referenceType: 1, referenceId: 1, variant: 1, type: 1, warehouse: 1 },
   {
     unique: true,
     partialFilterExpression: {

@@ -1,7 +1,5 @@
 import { Type } from 'class-transformer';
 import {
-  IsEnum,
-  IsIn,
   IsMongoId,
   IsNotEmpty,
   IsNumber,
@@ -9,17 +7,10 @@ import {
   IsString,
   MaxLength,
   Min,
-  ValidateIf,
 } from 'class-validator';
 import { i18nValidationMessage } from 'nestjs-i18n';
-import { InventoryDirection } from '../enums/inventory-direction.enum';
-import {
-  InventoryMovementType,
-  MANUAL_MOVEMENT_TYPES,
-  ManualMovementType,
-} from '../enums/inventory-movement-type.enum';
 
-export class CreateInventoryMovementDto {
+export class CreateInventoryTransferDto {
   @IsNotEmpty({
     message: i18nValidationMessage('validation.field_required', {
       field: 'variantId',
@@ -30,21 +21,19 @@ export class CreateInventoryMovementDto {
 
   @IsNotEmpty({
     message: i18nValidationMessage('validation.field_required', {
-      field: 'warehouseId',
+      field: 'fromWarehouseId',
     }),
   })
   @IsMongoId({ message: i18nValidationMessage('validation.must_be_mongo_id') })
-  warehouseId: string;
+  fromWarehouseId: string;
 
   @IsNotEmpty({
     message: i18nValidationMessage('validation.field_required', {
-      field: 'type',
+      field: 'toWarehouseId',
     }),
   })
-  @IsIn([...MANUAL_MOVEMENT_TYPES], {
-    message: i18nValidationMessage('validation.invalid_enum'),
-  })
-  type: ManualMovementType;
+  @IsMongoId({ message: i18nValidationMessage('validation.must_be_mongo_id') })
+  toWarehouseId: string;
 
   @IsNotEmpty({
     message: i18nValidationMessage('validation.field_required', {
@@ -57,24 +46,6 @@ export class CreateInventoryMovementDto {
     message: i18nValidationMessage('validation.min_value', { min: 1 }),
   })
   quantity: number;
-
-  /**
-   * Required only for `adjustment`.
-   * Server forces direction for restock/return/damage.
-   */
-  @ValidateIf(
-    (o: CreateInventoryMovementDto) =>
-      o.type === InventoryMovementType.ADJUSTMENT,
-  )
-  @IsNotEmpty({
-    message: i18nValidationMessage('validation.field_required', {
-      field: 'direction',
-    }),
-  })
-  @IsEnum(InventoryDirection, {
-    message: i18nValidationMessage('validation.invalid_enum'),
-  })
-  direction?: InventoryDirection;
 
   @IsOptional()
   @IsString({ message: i18nValidationMessage('validation.must_be_string') })

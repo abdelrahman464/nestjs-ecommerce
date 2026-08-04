@@ -5,5 +5,6 @@
   "stockConflict": "Stock changed concurrently; please retry",
   "directionRequired": "direction is required for adjustment movements",
   "manualTypeNotAllowed": "Movement type \"{type}\" cannot be posted via the manual inventory API",
-  "stockViaInventory": "Do not update stock on the variant; post an inventory movement instead"
+  "stockViaInventory": "Do not update stock on the variant; post an inventory movement instead",
+  "transferSameWarehouse": "fromWarehouseId and toWarehouseId must be different"
 }

@@ -9,18 +9,23 @@ import {
   ProductVariantDocument,
 } from '../products/schemas/product-variant.schema';
 import { resolveProductStatus } from '../products/utils/product-status.util';
+import { WarehousesService } from '../warehouses/warehouses.service';
 import { CreateInventoryMovementDto } from './dto/create-inventory-movement.dto';
+import { CreateInventoryTransferDto } from './dto/create-inventory-transfer.dto';
 import { InventoryDirection } from './enums/inventory-direction.enum';
 import { InventoryMovementType } from './enums/inventory-movement-type.enum';
 import { InventoryReferenceType } from './enums/inventory-reference-type.enum';
+import { InventoryLevelsRepository } from './repository/inventory-levels.repository';
 import {
   CreateMovementPersistence,
   InventoryRepository,
 } from './repository/inventory.repository';
+import { InventoryLevelDocument } from './schemas/inventory-level.schema';
 import { InventoryMovementDocument } from './schemas/inventory-movement.schema';
 
 type PostMovementParams = {
   variantId: Types.ObjectId | string;
+  warehouseId: Types.ObjectId | string;
   type: InventoryMovementType;
   quantity: number;
   direction: InventoryDirection;
@@ -29,12 +34,16 @@ type PostMovementParams = {
   reason?: string;
   createdBy?: Types.ObjectId | string | null;
   session?: ClientSession;
+  /** Skip assertUsable when caller already validated (e.g. transfer). */
+  skipWarehouseAssert?: boolean;
 };
 
 @Injectable()
 export class InventoryService {
   constructor(
     private readonly inventoryRepository: InventoryRepository,
+    private readonly levelsRepository: InventoryLevelsRepository,
+    private readonly warehousesService: WarehousesService,
     @InjectModel(ProductVariant.name)
     private readonly variantModel: Model<ProductVariantDocument>,
     @InjectConnection()
@@ -65,13 +74,38 @@ export class InventoryService {
     productId: Types.ObjectId,
     queryParams: Record<string, unknown>,
   ): Promise<PaginatedResponseDto<InventoryMovementDocument>> {
-    //*TODO: check if the product exists
     return this.inventoryRepository.findByProduct(productId, queryParams);
   }
 
+  async findMovementsByWarehouse(
+    warehouseId: Types.ObjectId,
+    queryParams: Record<string, unknown>,
+  ): Promise<PaginatedResponseDto<InventoryMovementDocument>> {
+    await this.warehousesService.findOne(warehouseId);
+    return this.inventoryRepository.findByWarehouse(warehouseId, queryParams);
+  }
+
+  async findLevelsByVariant(variantId: Types.ObjectId): Promise<{
+    data: InventoryLevelDocument[];
+    totalStock: number;
+  }> {
+    await this.requireVariant(variantId);
+    const data = await this.levelsRepository.findByVariant(variantId);
+    const totalStock = data.reduce((sum, row) => sum + row.quantity, 0);
+    return { data, totalStock };
+  }
+
+  async findLevelsByWarehouse(
+    warehouseId: Types.ObjectId,
+    queryParams: Record<string, unknown>,
+  ): Promise<PaginatedResponseDto<InventoryLevelDocument>> {
+    await this.warehousesService.findOne(warehouseId);
+    return this.levelsRepository.findByWarehouse(warehouseId, queryParams);
+  }
+
   /**
-   * Admin UI entry point — only restock / return / adjustment / damage.
-   * sale / initial are system-only (see postInitialStock / postSale*).
+   * Admin UI — restock / return / adjustment / damage only.
+   * Requires warehouseId (multi-location).
    */
   async postManualMovement(
     dto: CreateInventoryMovementDto,
@@ -81,6 +115,7 @@ export class InventoryService {
 
     return this.postMovement({
       variantId: dto.variantId,
+      warehouseId: dto.warehouseId,
       type: dto.type,
       quantity: dto.quantity,
       direction,
@@ -91,8 +126,67 @@ export class InventoryService {
   }
 
   /**
-   * Opening stock when a variant is created.
-   * Caller should create the variant with stock=0, then call this (same session).
+   * Move stock between warehouses in one TX.
+   * Net variant.stock change is 0 (out then in with opposite deltas).
+   */
+  async transfer(
+    dto: CreateInventoryTransferDto,
+    createdBy: string,
+  ): Promise<{ out: InventoryMovementDocument; in: InventoryMovementDocument }> {
+    if (dto.fromWarehouseId === dto.toWarehouseId) {
+      throw new I18nHttpException(
+        HttpStatus.BAD_REQUEST,
+        'inventory.transferSameWarehouse',
+      );
+    }
+
+    await this.warehousesService.assertUsable(dto.fromWarehouseId);
+    await this.warehousesService.assertUsable(dto.toWarehouseId);
+
+    const session = await this.connection.startSession();
+    try {
+      let out!: InventoryMovementDocument;
+      let inn!: InventoryMovementDocument;
+      await session.withTransaction(async () => {
+        // Shared id links the out/in pair for audit / idempotency.
+        const referenceId = new Types.ObjectId();
+
+        out = await this.postMovement({
+          variantId: dto.variantId,
+          warehouseId: dto.fromWarehouseId,
+          type: InventoryMovementType.TRANSFER,
+          quantity: dto.quantity,
+          direction: InventoryDirection.OUT,
+          referenceType: InventoryReferenceType.TRANSFER,
+          referenceId,
+          reason: dto.reason,
+          createdBy,
+          session,
+          skipWarehouseAssert: true,
+        });
+
+        inn = await this.postMovement({
+          variantId: dto.variantId,
+          warehouseId: dto.toWarehouseId,
+          type: InventoryMovementType.TRANSFER,
+          quantity: dto.quantity,
+          direction: InventoryDirection.IN,
+          referenceType: InventoryReferenceType.TRANSFER,
+          referenceId,
+          reason: dto.reason,
+          createdBy,
+          session,
+          skipWarehouseAssert: true,
+        });
+      });
+      return { out, in: inn };
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  /**
+   * Opening stock on variant create → default warehouse level + initial movement.
    */
   async postInitialStock(params: {
     variantId: Types.ObjectId | string;
@@ -102,8 +196,11 @@ export class InventoryService {
   }): Promise<InventoryMovementDocument | null> {
     if (params.quantity <= 0) return null;
 
+    const defaultWarehouse = await this.warehousesService.getDefault();
+
     return this.postMovement({
       variantId: params.variantId,
+      warehouseId: defaultWarehouse._id,
       type: InventoryMovementType.INITIAL,
       quantity: params.quantity,
       direction: InventoryDirection.IN,
@@ -111,17 +208,19 @@ export class InventoryService {
       referenceId: params.variantId,
       createdBy: params.createdBy ?? null,
       session: params.session,
+      skipWarehouseAssert: true,
     });
   }
 
   /**
-   * Fulfill a paid payment: one `sale` movement per line item.
-   * Idempotent — webhook retries return existing movements (no double decrement).
+   * MVP sales: decrement DEFAULT warehouse only (Phase 11 allocates across sites).
+   * Idempotent on webhook retry.
    */
   async postSaleForPayment(params: {
     paymentId: Types.ObjectId | string;
     items: Array<{ variant: Types.ObjectId | string; quantity: number }>;
   }): Promise<InventoryMovementDocument[]> {
+    const defaultWarehouse = await this.warehousesService.getDefault();
     const session = await this.connection.startSession();
     try {
       const results: InventoryMovementDocument[] = [];
@@ -129,12 +228,14 @@ export class InventoryService {
         for (const item of params.items) {
           const movement = await this.postMovement({
             variantId: item.variant,
+            warehouseId: defaultWarehouse._id,
             type: InventoryMovementType.SALE,
             quantity: item.quantity,
             direction: InventoryDirection.OUT,
             referenceType: InventoryReferenceType.WEBHOOK,
             referenceId: params.paymentId,
             session,
+            skipWarehouseAssert: true,
           });
           results.push(movement);
         }
@@ -146,8 +247,65 @@ export class InventoryService {
   }
 
   /**
-   * Core write path: ledger insert + cached variant.stock in one transaction.
-   * Only InventoryService may mutate variant.stock.
+   * Core inventory write path — the only place that may change stock.
+   *
+   * Applies **one** movement to **one** warehouse: updates the warehouse level,
+   * updates the cached `variant.stock` total, and appends an immutable ledger row.
+   * All of that runs in a single MongoDB transaction.
+   *
+   * -------------------------------------------------------------------------
+   * Callers (do not bypass this method)
+   * -------------------------------------------------------------------------
+   * - `postManualMovement`     → admin restock / return / adjustment / damage
+   * - `postInitialStock`       → opening balance on variant create (default WH)
+   * - `postSaleForPayment`     → webhook sale (default WH, MVP)
+   * - `transfer`               → calls this twice (OUT @ from, IN @ to)
+   *
+   * -------------------------------------------------------------------------
+   * Steps (inside `run`, under an open session)
+   * -------------------------------------------------------------------------
+   * 1. Optionally assert warehouse is usable (active, not deleted).
+   * 2. Idempotency: if `referenceId` is set, return an existing movement that
+   *    matches (referenceType, referenceId, variant, type, warehouse).
+   * 3. Load the live variant; compute signed `delta` from direction + quantity.
+   * 4. Load (or treat as 0) `inventory_levels` for variant × warehouse;
+   *    reject if level would go negative.
+   * 5. Apply delta to the level (create row on first inbound if missing).
+   * 6. Apply the same delta to `variant.stock` + resolve status
+   *    (optimistic lock on previous stock value).
+   * 7. Insert `inventory_movements` with level balanceBefore / balanceAfter.
+   *
+   * -------------------------------------------------------------------------
+   * Session / transaction
+   * -------------------------------------------------------------------------
+   * - If `params.session` is provided → join the caller's TX (variant create,
+   *   transfer outer TX, payment fulfill). Do **not** start a nested TX.
+   * - If omitted → start `withTransaction` here for a standalone write.
+   *
+   * -------------------------------------------------------------------------
+   * Params of note
+   * -------------------------------------------------------------------------
+   * @param params.variantId       Sellable unit whose stock changes.
+   * @param params.warehouseId     Location where the level is updated.
+   * @param params.type            Business reason (sale, restock, transfer, …).
+   * @param params.quantity        Absolute units moved (always ≥ 1).
+   * @param params.direction       `in` → +qty, `out` → −qty.
+   * @param params.referenceType   How the write entered the system.
+   * @param params.referenceId     Optional idempotency / link id (payment,
+   *                               variant, shared transfer id). Omit for
+   *                               plain manual admin movements.
+   * @param params.reason          Optional human note.
+   * @param params.createdBy       Admin/manager user id when a human acted.
+   * @param params.session         Existing ClientSession to join, if any.
+   * @param params.skipWarehouseAssert  When true, caller already validated
+   *                               the warehouse (e.g. transfer).
+   *
+   * @returns The created movement, or the existing one on idempotent replay.
+   *
+   * @throws inventory.invalidQuantity      quantity < 1
+   * @throws warehouse.* / product.variantNotFound
+   * @throws inventory.insufficientStock    level or global stock would go below 0
+   * @throws inventory.stockConflict        concurrent update lost optimistic lock
    */
   async postMovement(
     params: PostMovementParams,
@@ -162,13 +320,17 @@ export class InventoryService {
     const run = async (
       session: ClientSession,
     ): Promise<InventoryMovementDocument> => {
-      // Idempotent replay (webhook / variant_create retries)
+      if (!params.skipWarehouseAssert) {
+        await this.warehousesService.assertUsable(params.warehouseId);
+      }
+
       if (params.referenceId) {
         const existing = await this.inventoryRepository.findByIdempotencyKey({
           referenceType: params.referenceType,
           referenceId: params.referenceId,
           variant: params.variantId,
           type: params.type,
+          warehouse: params.warehouseId,
           session,
         });
         if (existing) return existing;
@@ -191,7 +353,13 @@ export class InventoryService {
         params.direction === InventoryDirection.IN
           ? params.quantity
           : -params.quantity;
-      const balanceBefore = variant.stock;
+
+      const level = await this.levelsRepository.findByVariantAndWarehouse(
+        variant._id,
+        params.warehouseId,
+        session,
+      );
+      const balanceBefore = level?.quantity ?? 0;
       const balanceAfter = balanceBefore + delta;
 
       if (balanceAfter < 0) {
@@ -205,18 +373,48 @@ export class InventoryService {
         );
       }
 
-      const nextStatus = resolveProductStatus(balanceAfter, variant.status);
+      // Level update (create on first inbound if missing)
+      const updatedLevel = await this.levelsRepository.applyDelta({
+        variantId: variant._id,
+        productId: variant.product,
+        warehouseId: params.warehouseId,
+        delta,
+        balanceBefore,
+        session,
+      });
 
-      const updated = await this.variantModel
+      if (!updatedLevel) {
+        throw new I18nHttpException(
+          HttpStatus.CONFLICT,
+          'inventory.stockConflict',
+        );
+      }
+
+      // Global cache: same delta so sum(levels) stays aligned with variant.stock
+      const globalBefore = variant.stock;
+      const globalAfter = globalBefore + delta;
+      if (globalAfter < 0) {
+        throw new I18nHttpException(
+          HttpStatus.BAD_REQUEST,
+          'inventory.insufficientStock',
+          {
+            available: globalBefore,
+            requested: params.quantity,
+          },
+        );
+      }
+
+      const nextStatus = resolveProductStatus(globalAfter, variant.status);
+      const updatedVariant = await this.variantModel
         .findOneAndUpdate(
           {
             _id: variant._id,
             deletedAt: null,
-            stock: balanceBefore,
+            stock: globalBefore,
           },
           {
             $set: {
-              stock: balanceAfter,
+              stock: globalAfter,
               status: nextStatus,
             },
           },
@@ -224,17 +422,18 @@ export class InventoryService {
         )
         .exec();
 
-      if (!updated) {
-        // Concurrent stock change — fail so caller can retry
+      if (!updatedVariant) {
         throw new I18nHttpException(
           HttpStatus.CONFLICT,
           'inventory.stockConflict',
         );
       }
 
+      const warehouseOid = new Types.ObjectId(String(params.warehouseId));
       const payload: CreateMovementPersistence = {
         variant: variant._id,
         product: variant.product,
+        warehouse: warehouseOid,
         type: params.type,
         quantity: params.quantity,
         direction: params.direction,
@@ -254,25 +453,27 @@ export class InventoryService {
       try {
         return await this.inventoryRepository.create(payload, session);
       } catch (error) {
-        // Race on unique idempotency index — treat as successful replay
         if (isDuplicateKeyError(error) && params.referenceId) {
-          const existing = await this.inventoryRepository.findByIdempotencyKey({
-            referenceType: params.referenceType,
-            referenceId: params.referenceId,
-            variant: params.variantId,
-            type: params.type,
-            session,
-          });
+          const existing =
+            await this.inventoryRepository.findByIdempotencyKey({
+              referenceType: params.referenceType,
+              referenceId: params.referenceId,
+              variant: params.variantId,
+              type: params.type,
+              warehouse: params.warehouseId,
+              session,
+            });
           if (existing) return existing;
         }
         throw error;
       }
     };
 
+
     if (params.session) {
       return run(params.session);
     }
-
+    
     const session = await this.connection.startSession();
     try {
       let result!: InventoryMovementDocument;

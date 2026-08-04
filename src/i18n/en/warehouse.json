@@ -1,0 +1,11 @@
+{
+  "notFound": "Warehouse with ID {id} not found",
+  "codeExists": "A warehouse with code \"{code}\" already exists",
+  "noDefault": "No default warehouse configured; create one and mark it as default",
+  "inactive": "Warehouse {id} is inactive",
+  "cannotUnsetDefault": "Cannot unset the default warehouse. Mark another warehouse as default first.",
+  "cannotDeleteDefault": "Cannot delete the default warehouse. Mark another warehouse as default first.",
+  "cannotDeleteLast": "Cannot delete the last warehouse",
+  "cannotDeleteWithStock": "Cannot delete a warehouse that still has stock; transfer stock out first",
+  "defaultConflict": "Another warehouse is already marked as default"
+}

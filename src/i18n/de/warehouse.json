@@ -1,0 +1,11 @@
+{
+  "notFound": "Lager mit ID {id} nicht gefunden",
+  "codeExists": "Ein Lager mit dem Code \"{code}\" existiert bereits",
+  "noDefault": "Kein Standardlager konfiguriert; bitte eines anlegen und als Standard markieren",
+  "inactive": "Lager {id} ist inaktiv",
+  "cannotUnsetDefault": "Standardlager kann nicht entfernt werden. Markieren Sie zuerst ein anderes Lager als Standard.",
+  "cannotDeleteDefault": "Standardlager kann nicht gelöscht werden. Markieren Sie zuerst ein anderes Lager als Standard.",
+  "cannotDeleteLast": "Das letzte Lager kann nicht gelöscht werden",
+  "cannotDeleteWithStock": "Lager mit Bestand kann nicht gelöscht werden; Bestand zuerst umlagern",
+  "defaultConflict": "Ein anderes Lager ist bereits als Standard markiert"
+}

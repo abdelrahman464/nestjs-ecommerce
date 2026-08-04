@@ -17,6 +17,10 @@ export class InventoryMovementResponseDto {
   product: string;
 
   @Expose()
+  @Transform(({ obj }) => obj.warehouse?.toString?.() ?? obj.warehouse)
+  warehouse: string;
+
+  @Expose()
   type: InventoryMovementType;
 
   @Expose()

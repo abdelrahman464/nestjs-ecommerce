@@ -11,4 +11,6 @@ export enum InventoryReferenceType {
   WEBHOOK = 'webhook',
   /** Staff placed an order on behalf of a customer (Orders phase). */
   MANUAL_ORDER = 'manual_order',
+  /** Inter-warehouse transfer pair (shared referenceId on out + in). */
+  TRANSFER = 'transfer',
 }

@@ -15,6 +15,11 @@ export enum InventoryMovementType {
   ADJUSTMENT = 'adjustment',
   /** Write-off (broken / unsellable). */
   DAMAGE = 'damage',
+  /**
+   * Inter-warehouse move. Always posted as a pair (out @ from + in @ to)
+   * with the same referenceId — never via POST /movements.
+   */
+  TRANSFER = 'transfer',
 }
 
 /** Types allowed on POST /inventory/movements (admin UI). */
