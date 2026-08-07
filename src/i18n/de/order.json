@@ -1,0 +1,4 @@
+{
+  "notFound": "Bestellung mit ID {id} nicht gefunden",
+  "forbidden": "Sie haben keinen Zugriff auf diese Bestellung"
+}

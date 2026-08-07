@@ -1,20 +1,27 @@
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { Connection, Model, Types } from 'mongoose';
+import {
+  DEFAULT_CONTENT_LOCALE,
+  getLocalizedValue,
+} from '../../common/constants/supported-content-locales.constant';
 import { I18nHttpException } from '../../common/filters/i18n-http.exception';
 import { PaginatedResponseDto } from '../../shared/dtos/paginated-response.dto';
 import { CartService } from '../cart/cart.service';
 import { CartDocument } from '../cart/schemas/cart.schema';
+import { InventoryReferenceType } from '../inventory/enums/inventory-reference-type.enum';
+import { ReservationSource } from '../inventory/enums/reservation.enums';
+import { ReservationsService } from '../inventory/reservations.service';
 import { NotificationService } from '../notifications/notification.service';
-import { InventoryService } from '../inventory/inventory.service';
+import { OrderSource } from '../orders/enums/order.enums';
+import { OrdersService } from '../orders/orders.service';
 import { ProductVariantsService } from '../products/product-variants.service';
 import { Product, ProductDocument } from '../products/schemas/product.schema';
-import {
-  ProductVariantDocument,
-} from '../products/schemas/product-variant.schema';
+import { ProductVariantDocument } from '../products/schemas/product-variant.schema';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
+import { MarkPaymentPaidDto } from './dto/mark-payment-paid.dto';
 import { PaymentProvider } from './enums/payment-provider.enum';
 import { PaymentStatus } from './enums/payment-status.enum';
 import {
@@ -22,18 +29,22 @@ import {
   CreateCheckoutParams,
 } from './interfaces/payment-types.interface';
 import { WebhookHeaders } from './interfaces/payment-strategy.interface';
+import { OrderItem } from '../orders/schemas/order-item.schema';
+import { OrderDocument } from '../orders/schemas/order.schema';
 import { PaymentRepository } from './repository/payment.repository';
-import { PaymentItem } from './schemas/payment-item.schema';
 import { PaymentDocument } from './schemas/payment.schema';
 import { PaymentStrategyRegistry } from './strategies/payment-strategy.registry';
 
 export interface CheckoutResponse {
   paymentId: string;
+  orderId: string;
+  reservationId: string;
   redirectUrl: string;
   subtotal: number;
   deliveryFee: number;
   amount: number;
   currency: string;
+  expiresAt: Date;
 }
 
 @Injectable()
@@ -47,13 +58,22 @@ export class PaymentsService {
     private readonly cartService: CartService,
     private readonly notificationService: NotificationService,
     private readonly variantsService: ProductVariantsService,
-    private readonly inventoryService: InventoryService,
+    private readonly reservationsService: ReservationsService,
+    private readonly ordersService: OrdersService,
     @InjectModel(Product.name)
     private readonly productModel: Model<ProductDocument>,
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
+    @InjectConnection()
+    private readonly connection: Connection,
   ) {}
 
+  /**
+   * Self-serve checkout orchestration (after commit → provider redirect):
+   * 1) assert available stock
+   * 2) TX: order + payment + reservation (S1 allocate + reservedQuantity)
+   * 3) Stripe session outside the TX
+   */
   async createCheckout(
     userId: string,
     dto: CreateCheckoutDto,
@@ -73,8 +93,19 @@ export class PaymentsService {
       );
     }
 
-    const { lineItems, paymentItems, subtotal } =
+    const pendingOrder = await this.ordersService.findPendingByUser(userId);
+    if (pendingOrder) {
+      throw new I18nHttpException(
+        HttpStatus.CONFLICT,
+        'payment.checkoutPending',
+        { id: pendingOrder._id.toString() },
+      );
+    }
+
+    const { lineItems, orderItems, subtotal, reserveItems } =
       await this.buildCartCheckout(cart);
+
+    await this.reservationsService.assertAvailable(reserveItems);
 
     const deliveryFee = this.getDeliveryFee();
     const amount = subtotal + deliveryFee;
@@ -83,15 +114,68 @@ export class PaymentsService {
       this.configService.get<string>('payment.defaultCurrency') ??
       'EUR';
 
-    const payment = await this.paymentRepository.create({
-      user: userId,
-      items: paymentItems,
-      subtotal,
-      deliveryFee,
-      amount,
-      provider: dto.provider,
-      currency,
-    });
+    const session = await this.connection.startSession();
+    let payment!: PaymentDocument;
+    let orderId!: string;
+    let reservationId!: string;
+    let expiresAt!: Date;
+
+    try {
+      await session.withTransaction(async () => {
+        const order = await this.ordersService.createPending({
+          userId,
+          createdBy: userId,
+          source: OrderSource.CHECKOUT,
+          items: orderItems,
+          subtotal,
+          deliveryFee,
+          amount,
+          currency,
+          session,
+        });
+
+        payment = await this.paymentRepository.create(
+          {
+            user: userId,
+            order: order._id,
+            subtotal,
+            deliveryFee,
+            amount,
+            provider: dto.provider,
+            currency,
+          },
+          session,
+        );
+
+        const reservation = await this.reservationsService.createReservation({
+          userId,
+          createdBy: userId,
+          source: ReservationSource.CHECKOUT,
+          orderId: order._id,
+          paymentId: payment._id,
+          items: reserveItems,
+          session,
+        });
+
+        await this.ordersService.linkPaymentAndReservation(
+          order._id,
+          payment._id,
+          reservation._id,
+          session,
+        );
+        await this.paymentRepository.setReservation(
+          payment._id,
+          reservation._id,
+          session,
+        );
+
+        orderId = order._id.toString();
+        reservationId = reservation._id.toString();
+        expiresAt = reservation.expiresAt;
+      });
+    } finally {
+      await session.endSession();
+    }
 
     const strategy = this.strategyRegistry.get(dto.provider);
     const paymentId = payment._id.toString();
@@ -115,11 +199,14 @@ export class PaymentsService {
 
     return {
       paymentId,
+      orderId,
+      reservationId,
       redirectUrl,
       subtotal,
       deliveryFee,
       amount,
       currency,
+      expiresAt,
     };
   }
 
@@ -131,8 +218,32 @@ export class PaymentsService {
         'payment.noPendingCheckout',
       );
     }
+    if (!payment.reservation) {
+      throw new I18nHttpException(
+        HttpStatus.BAD_REQUEST,
+        'payment.checkoutIncomplete',
+      );
+    }
 
-    const params = this.buildCheckoutParamsFromPayment(payment);
+    if (payment.provider === PaymentProvider.MANUAL) {
+      throw new I18nHttpException(
+        HttpStatus.BAD_REQUEST,
+        'payment.manualProviderNotAllowed',
+      );
+    }
+
+    const reservation = await this.reservationsService.findByOrderId(
+      payment.order,
+    );
+    if (reservation.expiresAt.getTime() < Date.now()) {
+      await this.cancelPendingCheckout(userId);
+      throw new I18nHttpException(
+        HttpStatus.BAD_REQUEST,
+        'reservation.expired',
+      );
+    }
+
+    const params = await this.buildCheckoutParamsFromPayment(payment);
     const strategy = this.strategyRegistry.get(payment.provider);
 
     const { redirectUrl, reference } = payment.providerReference
@@ -145,11 +256,14 @@ export class PaymentsService {
 
     return {
       paymentId: payment._id.toString(),
+      orderId: this.getOrderId(payment),
+      reservationId: payment.reservation.toString(),
       redirectUrl,
       subtotal: payment.subtotal,
       deliveryFee: payment.deliveryFee,
       amount: payment.amount,
       currency: payment.currency,
+      expiresAt: reservation.expiresAt,
     };
   }
 
@@ -160,6 +274,11 @@ export class PaymentsService {
         HttpStatus.NOT_FOUND,
         'payment.noPendingCheckout',
       );
+    }
+
+    if (payment.order) {
+      await this.reservationsService.releaseByOrderId(payment.order);
+      await this.ordersService.markCancelled(payment.order);
     }
 
     await this.paymentRepository.updateStatus(
@@ -198,8 +317,38 @@ export class PaymentsService {
     );
 
     if (event.status === PaymentStatus.PAID && updated) {
-      await this.fulfillOrder(updated);
+      await this.fulfillOrder(updated, InventoryReferenceType.WEBHOOK);
     }
+  }
+
+  /**
+   * Admin marks manual payment paid (proof: images[] + note).
+   * Then confirms reservation → sales with referenceId = orderId.
+   */
+  async markPaid(
+    paymentId: Types.ObjectId,
+    dto: MarkPaymentPaidDto,
+    adminId: string,
+  ): Promise<PaymentDocument> {
+    const payment = await this.findPaymentById(paymentId);
+    if (payment.status !== PaymentStatus.PENDING) {
+      throw new I18nHttpException(HttpStatus.BAD_REQUEST, 'payment.notPending');
+    }
+    const updated = await this.paymentRepository.markPaidManual(paymentId, {
+      images: dto.images ?? [],
+      note: dto.note,
+      paidBy: adminId,
+    });
+    if (!updated) {
+      throw new I18nHttpException(HttpStatus.CONFLICT, 'payment.notPending');
+    }
+
+    await this.fulfillOrder(
+      updated,
+      InventoryReferenceType.MANUAL_ORDER,
+      adminId,
+    );
+    return (await this.paymentRepository.findPaymentById(paymentId))!;
   }
 
   async getMyPayments(
@@ -227,11 +376,23 @@ export class PaymentsService {
 
   private async buildCartCheckout(cart: CartDocument): Promise<{
     lineItems: CheckoutLineItem[];
-    paymentItems: PaymentItem[];
+    orderItems: OrderItem[];
+    reserveItems: Array<{
+      variantId: string;
+      productId: string;
+      quantity: number;
+    }>;
     subtotal: number;
   }> {
+    // line items are the items that will be displayed to the user in the checkout page
     const lineItems: CheckoutLineItem[] = [];
-    const paymentItems: PaymentItem[] = [];
+    // order items are the items that will be added to the order
+    const orderItems: OrderItem[] = [];
+    const reserveItems: Array<{
+      variantId: string;
+      productId: string;
+      quantity: number;
+    }> = [];
     let subtotal = 0;
 
     for (const item of cart.items) {
@@ -252,13 +413,15 @@ export class PaymentsService {
         );
       }
 
-      if (freshVariant.stock < item.quantity) {
+      const availability =
+        await this.reservationsService.getAvailability(variantId);
+      if (item.quantity > availability.available) {
         throw new I18nHttpException(
           HttpStatus.BAD_REQUEST,
           'payment.insufficientStock',
           {
-            name: this.resolveProductName(product),
-            available: freshVariant.stock,
+            name: this.resolveProductName(product as ProductDocument),
+            available: availability.available,
           },
         );
       }
@@ -276,52 +439,54 @@ export class PaymentsService {
       const productName = this.resolveProductName(product);
 
       lineItems.push({
-        productId: variantId,
+        productId: variantId, // string id of the variant
         name: productName,
         quantity: item.quantity,
         unitPrice,
         totalPrice,
       });
 
-      paymentItems.push({
-        variant: freshVariant._id,
+      orderItems.push({
+        variant: freshVariant._id, // object id of the variant
         product: product._id,
         quantity: item.quantity,
         unitPrice,
         productName,
       });
 
+      reserveItems.push({
+        variantId,
+        productId: product._id.toString(),
+        quantity: item.quantity,
+      });
+
       subtotal += totalPrice;
     }
 
-    return { lineItems, paymentItems, subtotal };
+    return { lineItems, orderItems, reserveItems, subtotal };
   }
 
-  private async fulfillOrder(payment: PaymentDocument): Promise<void> {
-    const saleItems = payment.items
-      .map((item) => {
-        const variantId = item.variant ?? item.product;
-        if (!variantId) return null;
-        return { variant: variantId, quantity: item.quantity };
-      })
-      .filter(
-        (item): item is { variant: Types.ObjectId; quantity: number } =>
-          item != null,
-      );
+  private async fulfillOrder(
+    payment: PaymentDocument,
+    referenceType:
+      | InventoryReferenceType.WEBHOOK
+      | InventoryReferenceType.MANUAL_ORDER,
+    movementCreatedBy?: string,
+  ): Promise<void> {
+    const orderId = this.getOrderId(payment);
 
-    // Ledger + cached stock (idempotent on webhook retry)
-    if (saleItems.length) {
-      await this.inventoryService.postSaleForPayment({
-        paymentId: payment._id,
-        items: saleItems,
-      });
-    }
+    await this.reservationsService.confirmByOrderId({
+      orderId,
+      referenceType,
+      movementCreatedBy: movementCreatedBy ?? payment.user.toString(),
+    });
 
+    await this.ordersService.markPaid(orderId);
     await this.cartService.clearCart(payment.user.toString());
     await this.sendOrderConfirmation(payment);
 
     this.logger.log(
-      `Payment ${payment._id.toString()} PAID — order fulfilled for user ${payment.user.toString()}`,
+      `Payment ${payment._id.toString()} PAID — order ${orderId} fulfilled`,
     );
   }
 
@@ -329,14 +494,15 @@ export class PaymentsService {
     const user = await this.userModel.findById(payment.user).exec();
     if (!user?.email) return;
 
-    const itemsList = payment.items
+    const order = await this.requireOrder(payment);
+    const itemsList = order.items
       .map(
         (item) =>
           `- ${item.productName} x${item.quantity} = ${(item.unitPrice * item.quantity).toFixed(2)} ${payment.currency}`,
       )
       .join('\n');
 
-    const subject = `Order confirmation #${payment._id.toString().slice(-8)}`;
+    const subject = `Order confirmation #${order._id.toString().slice(-8)}`;
     const message = `Hi ${user.name},
 
 Thank you for your purchase!
@@ -371,19 +537,20 @@ We will process your order shortly.`;
   }
 
   private resolveProductName(product: ProductDocument): string {
-    const title = product.title as unknown as
-      | { en?: string; de?: string }
-      | string;
-    if (typeof title === 'string') return title;
-    return title?.de ?? title?.en ?? 'Product';
+    return (
+      getLocalizedValue(product.title, DEFAULT_CONTENT_LOCALE) ??
+      getLocalizedValue(product.title, 'en') ??
+      'Product'
+    );
   }
 
-  private buildCheckoutParamsFromPayment(
+  private async buildCheckoutParamsFromPayment(
     payment: PaymentDocument,
-  ): CreateCheckoutParams {
+  ): Promise<CreateCheckoutParams> {
     const paymentId = payment._id.toString();
-    const lineItems: CheckoutLineItem[] = payment.items.map((item) => ({
-      productId: item.product.toString(),
+    const order = await this.requireOrder(payment);
+    const lineItems: CheckoutLineItem[] = order.items.map((item) => ({
+      productId: item.variant.toString(),
       name: item.productName,
       quantity: item.quantity,
       unitPrice: item.unitPrice,
@@ -402,6 +569,31 @@ We will process your order shortly.`;
       cancelUrl: this.buildUrl('payment.cancelUrl', paymentId),
       callbackUrl: this.buildCallbackUrl(payment.provider),
     };
+  }
+
+  private getOrderId(payment: PaymentDocument): string {
+    const order = payment.order as Types.ObjectId | OrderDocument;
+    if (order && typeof order === 'object' && '_id' in order) {
+      return order._id.toString();
+    }
+    return String(payment.order);
+  }
+
+  private async requireOrder(payment: PaymentDocument): Promise<OrderDocument> {
+    /**
+     * payment.order already looks like an Order?  (object + has "items")
+       → use it as-is (skip DB)
+      else
+       → load via ordersService.findOne(payment.order)
+     */
+    const populated = payment.order as Types.ObjectId | OrderDocument;
+    if (populated && typeof populated === 'object' && 'items' in populated) {
+      return populated as OrderDocument;
+    }
+    const order = await this.ordersService.findOne(
+      new Types.ObjectId(String(payment.order)),
+    );
+    return order;
   }
 
   private buildUrl(configKey: string, paymentId: string): string {

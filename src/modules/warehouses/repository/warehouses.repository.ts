@@ -47,6 +47,14 @@ export class WarehousesRepository {
       .exec();
   }
 
+  /** Active warehouses for allocation (S1), sorted by admin `order`. */
+  async findActiveSorted(): Promise<WarehouseDocument[]> {
+    return this.warehouseModel
+      .find({ ...NOT_DELETED, isActive: true })
+      .sort({ order: 1, createdAt: 1 })
+      .exec();
+  }
+
   async countNotDeleted(session?: ClientSession): Promise<number> {
     return this.warehouseModel
       .countDocuments(NOT_DELETED)

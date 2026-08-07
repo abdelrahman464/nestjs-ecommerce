@@ -1,0 +1,8 @@
+{
+  "notFound": "Reservation with ID {id} not found",
+  "notFoundForOrder": "No reservation found for order {orderId}",
+  "insufficientAvailable": "Insufficient available stock for variant {variantId}: available {available}, requested {requested}",
+  "reserveConflict": "Stock reservation changed concurrently; please retry",
+  "cannotConfirm": "Cannot confirm reservation in status \"{status}\"",
+  "expired": "Reservation has expired"
+}

@@ -63,6 +63,7 @@ export class InventoryLevelsRepository {
       params;
     const balanceAfter = balanceBefore + delta;
 
+    
     if (balanceBefore === 0 && delta > 0) {
       const existing = await this.findByVariantAndWarehouse(
         variantId,
@@ -94,6 +95,65 @@ export class InventoryLevelsRepository {
         },
         { $set: { quantity: balanceAfter } },
         { new: true, session },
+      )
+      .exec();
+  }
+
+  /**
+   * Hold stock for a reservation line.
+   * Atomic: only succeeds if available (quantity - reserved) >= qty.
+   */
+  async increaseReserved(params: {
+    variantId: Types.ObjectId | string;
+    warehouseId: Types.ObjectId | string;
+    qty: number;
+    session: ClientSession;
+  }): Promise<InventoryLevelDocument | null> {
+    return this.levelModel
+      .findOneAndUpdate(
+        {
+          variant: params.variantId,
+          warehouse: params.warehouseId,
+          $expr: {
+            // quantity - reservedQuantity >= qty  if true, then the reservation can be made 
+            $gte: [
+              {
+                // get the available quantity
+                $subtract: [
+                  '$quantity',
+                  // get the reserved quantity if it exists, otherwise 0
+                  { $ifNull: ['$reservedQuantity', 0] },
+                ],
+              },
+              params.qty,
+            ],
+          },
+        },
+        { $inc: { reservedQuantity: params.qty } },
+        { new: true, session: params.session },
+      )
+      .exec();
+  }
+
+  /**
+   * Free held stock (release / expire / before sale confirm).
+   * Atomic: reservedQuantity must be >= qty.
+   */
+  async decreaseReserved(params: {
+    variantId: Types.ObjectId | string;
+    warehouseId: Types.ObjectId | string;
+    qty: number;
+    session: ClientSession;
+  }): Promise<InventoryLevelDocument | null> {
+    return this.levelModel
+      .findOneAndUpdate(
+        {
+          variant: params.variantId,
+          warehouse: params.warehouseId,
+          reservedQuantity: { $gte: params.qty },
+        },
+        { $inc: { reservedQuantity: -params.qty } },
+        { new: true, session: params.session },
       )
       .exec();
   }

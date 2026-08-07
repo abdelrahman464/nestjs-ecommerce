@@ -4,7 +4,7 @@ import { Product } from '../../products/schemas/product.schema';
 import { ProductVariant } from '../../products/schemas/product-variant.schema';
 
 @Schema({ _id: false })
-export class PaymentItem {
+export class OrderItem {
   @Prop({
     type: mongoose.Schema.Types.ObjectId,
     ref: ProductVariant.name,
@@ -29,4 +29,4 @@ export class PaymentItem {
   productName: string;
 }
 
-export const PaymentItemSchema = SchemaFactory.createForClass(PaymentItem);
+export const OrderItemSchema = SchemaFactory.createForClass(OrderItem);

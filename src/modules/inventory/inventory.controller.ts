@@ -18,12 +18,20 @@ import { UserRole } from '../users/enums/user-role.enum';
 import { CreateInventoryMovementDto } from './dto/create-inventory-movement.dto';
 import { CreateInventoryTransferDto } from './dto/create-inventory-transfer.dto';
 import { InventoryService } from './inventory.service';
+import {
+  ReservationsService,
+  VariantAvailability,
+} from './reservations.service';
 import { InventoryLevelDocument } from './schemas/inventory-level.schema';
 import { InventoryMovementDocument } from './schemas/inventory-movement.schema';
+import { InventoryReservationDocument } from './schemas/inventory-reservation.schema';
 
 @Controller('inventory')
 export class InventoryController {
-  constructor(private readonly inventoryService: InventoryService) {}
+  constructor(
+    private readonly inventoryService: InventoryService,
+    private readonly reservationsService: ReservationsService,
+  ) {}
 
   @Post('movements')
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
@@ -101,5 +109,42 @@ export class InventoryController {
       warehouseId,
       queryParams,
     );
+  }
+
+  @Get('variants/:variantId/availability')
+  @Roles(
+    UserRole.USER,
+    UserRole.ADMIN,
+    UserRole.MANAGER,
+  )
+  async getAvailability(
+    @Param('variantId', ParseObjectIdPipe) variantId: Types.ObjectId,
+  ): Promise<VariantAvailability> {
+    return this.reservationsService.getAvailability(variantId.toString());
+  }
+
+  @Get('orders/:orderId/reservation')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  async findReservationByOrder(
+    @Param('orderId', ParseObjectIdPipe) orderId: Types.ObjectId,
+  ): Promise<InventoryReservationDocument> {
+    return this.reservationsService.findByOrderId(orderId);
+  }
+
+  @Get('reservations/:id')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  async findReservation(
+    @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
+  ): Promise<InventoryReservationDocument> {
+    return this.reservationsService.findById(id);
+  }
+
+  @Post('reservations/:id/release')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async releaseReservation(
+    @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
+  ): Promise<InventoryReservationDocument> {
+    return this.reservationsService.releaseById(id);
   }
 }

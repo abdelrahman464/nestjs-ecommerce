@@ -180,6 +180,11 @@ export class WarehousesService {
     return warehouse;
   }
 
+  /** Active warehouses sorted by `order` — used by allocation */
+  async findActiveSorted(): Promise<WarehouseDocument[]> {
+    return this.warehousesRepository.findActiveSorted();
+  }
+
   /**
    * Stock writes must target an active, non-deleted warehouse.
    */

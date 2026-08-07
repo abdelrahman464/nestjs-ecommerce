@@ -10,5 +10,8 @@
   "providerNotSupported": "Payment provider '{provider}' is not supported",
   "checkoutFailed": "Failed to create the checkout session",
   "invalidWebhook": "Invalid or unverified webhook payload",
-  "notFound": "Payment with ID {id} not found"
+  "notFound": "Payment with ID {id} not found",
+  "manualProviderNotAllowed": "Use POST /orders/manual for admin orders; checkout only supports stripe/klarna",
+  "checkoutIncomplete": "Payment is missing order or reservation link",
+  "notPending": "Payment is not in pending status"
 }

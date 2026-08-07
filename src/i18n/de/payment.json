@@ -10,5 +10,8 @@
   "providerNotSupported": "Zahlungsanbieter '{provider}' wird nicht unterstützt",
   "checkoutFailed": "Checkout-Sitzung konnte nicht erstellt werden",
   "invalidWebhook": "Ungültige oder nicht verifizierte Webhook-Daten",
-  "notFound": "Zahlung mit ID {id} nicht gefunden"
+  "notFound": "Zahlung mit ID {id} nicht gefunden",
+  "manualProviderNotAllowed": "Für Admin-Bestellungen POST /orders/manual verwenden; Checkout nur stripe/klarna",
+  "checkoutIncomplete": "Zahlung hat keine Order- oder Reservierungsverknüpfung",
+  "notPending": "Zahlung ist nicht im Status pending"
 }

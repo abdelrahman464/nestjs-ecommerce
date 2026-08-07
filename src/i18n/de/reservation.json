@@ -1,0 +1,8 @@
+{
+  "notFound": "Reservierung mit ID {id} nicht gefunden",
+  "notFoundForOrder": "Keine Reservierung für Bestellung {orderId} gefunden",
+  "insufficientAvailable": "Nicht genügend verfügbarer Bestand für Variante {variantId}: verfügbar {available}, angefordert {requested}",
+  "reserveConflict": "Reservierung wurde gleichzeitig geändert; bitte erneut versuchen",
+  "cannotConfirm": "Reservierung im Status \"{status}\" kann nicht bestätigt werden",
+  "expired": "Reservierung ist abgelaufen"
+}

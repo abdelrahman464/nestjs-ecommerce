@@ -36,6 +36,14 @@ export class InventoryLevel {
 
   @Prop({ required: true, min: 0, default: 0 })
   quantity: number;
+
+  /**
+   * Units held for pending reservations at this warehouse.
+   * available = quantity - reservedQuantity (must stay >= 0).
+   * Only ReservationsService may change this field.
+   */
+  @Prop({ required: true, min: 0, default: 0 })
+  reservedQuantity: number;
 }
 
 export type InventoryLevelDocument = HydratedDocument<InventoryLevel>;

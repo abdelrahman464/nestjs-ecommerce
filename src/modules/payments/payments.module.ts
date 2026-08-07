@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { CartModule } from '../cart/cart.module';
 import { InventoryModule } from '../inventory/inventory.module';
+import { OrdersModule } from '../orders/orders.module';
 import { ProductsModule } from '../products/products.module';
 import { Product, ProductSchema } from '../products/schemas/product.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
@@ -21,6 +22,7 @@ import { PaymentsWebhookController } from './webhooks/payments-webhook.controlle
     CartModule,
     ProductsModule,
     InventoryModule,
+    OrdersModule,
     MongooseModule.forFeature([
       { name: Payment.name, schema: PaymentSchema },
       { name: Product.name, schema: ProductSchema },

@@ -1,6 +1,7 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { I18nHttpException } from '../../common/filters/i18n-http.exception';
+import { ReservationsService } from '../inventory/reservations.service';
 import { ProductVariantsService } from '../products/product-variants.service';
 import { ProductVariantDocument } from '../products/schemas/product-variant.schema';
 import { AddCartItemDto } from './dto/add-cart-item.dto';
@@ -13,6 +14,7 @@ export class CartService {
   constructor(
     private readonly cartRepository: CartRepository,
     private readonly variantsService: ProductVariantsService,
+    private readonly reservationsService: ReservationsService,
   ) {}
 
   async getOrCreateCart(userId: string): Promise<CartDocument> {
@@ -29,7 +31,7 @@ export class CartService {
   async addItem(userId: string, dto: AddCartItemDto): Promise<CartDocument> {
     const variant = await this.variantsService.findAvailableById(dto.variantId);
     const cart = await this.getOrCreateCart(userId);
-    this.applyAddItem(cart, variant, dto.quantity);
+    await this.applyAddItem(cart, variant, dto.quantity);
     return this.cartRepository.save(cart);
   }
 
@@ -43,7 +45,7 @@ export class CartService {
       const variant = await this.variantsService.findAvailableById(
         item.variantId,
       );
-      this.applyAddItem(cart, variant, item.quantity);
+      await this.applyAddItem(cart, variant, item.quantity);
     }
 
     return this.cartRepository.save(cart);
@@ -66,17 +68,20 @@ export class CartService {
       });
     }
 
-    if (dto.quantity > variant.stock) {
+    const availability = await this.reservationsService.getAvailability(
+      variantId,
+    );
+    if (dto.quantity > availability.available) {
       throw new I18nHttpException(
         HttpStatus.BAD_REQUEST,
         'cart.insufficientStock',
-        { available: variant.stock },
+        { available: availability.available },
       );
     }
 
     item.quantity = dto.quantity;
-    cart.markModified('items');
-    return this.cartRepository.save(cart);
+    cart.markModified('items'); 
+    return this.cartRepository.save(cart); // without markModified, Mongoose may skip `items`
   }
 
   async removeItem(userId: string, variantId: string): Promise<CartDocument> {
@@ -101,11 +106,11 @@ export class CartService {
     return this.cartRepository.save(cart);
   }
 
-  private applyAddItem(
+  private async applyAddItem(
     cart: CartDocument,
     variant: ProductVariantDocument,
     quantity: number,
-  ): void {
+  ): Promise<void> {
     const variantId = variant._id.toString();
     const existing = cart.items.find(
       (item) => this.getItemVariantId(item) === variantId,
@@ -115,11 +120,13 @@ export class CartService {
       ? existing.quantity + quantity
       : quantity;
 
-    if (nextQuantity > variant.stock) {
+    const availability =
+      await this.reservationsService.getAvailability(variantId);
+    if (nextQuantity > availability.available) {
       throw new I18nHttpException(
         HttpStatus.BAD_REQUEST,
         'cart.insufficientStock',
-        { available: variant.stock },
+        { available: availability.available },
       );
     }
 

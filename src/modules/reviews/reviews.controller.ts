@@ -28,7 +28,7 @@ export class ReviewsController {
   constructor(private readonly reviewsService: ReviewsService) {}
 
   @Post()
-  @Roles(UserRole.USER, UserRole.ADMIN, UserRole.MANAGER, UserRole.INSTRUCTOR)
+  @Roles(UserRole.USER, UserRole.ADMIN, UserRole.MANAGER)
   @HttpCode(HttpStatus.CREATED)
   async create(
     @Body() dto: CreateReviewDto,
@@ -46,7 +46,7 @@ export class ReviewsController {
   }
 
   @Get('my')
-  @Roles(UserRole.USER, UserRole.ADMIN, UserRole.MANAGER, UserRole.INSTRUCTOR)
+  @Roles(UserRole.USER, UserRole.ADMIN, UserRole.MANAGER)
   async findMine(
     @GetAuthUser() authUser: AuthenticatedUser,
     @Query() queryParams: Record<string, any>,
@@ -75,7 +75,7 @@ export class ReviewsController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.USER, UserRole.ADMIN, UserRole.MANAGER, UserRole.INSTRUCTOR)
+  @Roles(UserRole.USER, UserRole.ADMIN, UserRole.MANAGER)
   async update(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() dto: UpdateReviewDto,
@@ -90,7 +90,7 @@ export class ReviewsController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.USER, UserRole.ADMIN, UserRole.MANAGER, UserRole.INSTRUCTOR)
+  @Roles(UserRole.USER, UserRole.ADMIN, UserRole.MANAGER)
   @HttpCode(HttpStatus.OK)
   async remove(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,

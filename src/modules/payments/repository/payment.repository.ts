@@ -1,25 +1,23 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { ClientSession, Model, Types } from 'mongoose';
 import { ApiFeatures } from '../../../common/utils/api-features.utils';
 import { PaginatedResponseDto } from '../../../shared/dtos/paginated-response.dto';
-import { PRODUCT_PUBLIC_FIELDS } from '../../products/constants/product.constants';
-import { VARIANT_PUBLIC_FIELDS } from '../../products/constants/product.constants';
 import { USER_PUBLIC_FIELDS } from '../../users/constants/user.constants';
 import { PaymentProvider } from '../enums/payment-provider.enum';
 import { PaymentStatus } from '../enums/payment-status.enum';
-import { PaymentItem } from '../schemas/payment-item.schema';
 import { Payment, PaymentDocument } from '../schemas/payment.schema';
 
 export interface CreatePaymentPayload {
   user: Types.ObjectId | string;
-  items: PaymentItem[];
+  order: Types.ObjectId | string;
   subtotal: number;
   deliveryFee: number;
   amount: number;
   provider: PaymentProvider;
   currency: string;
   status?: PaymentStatus;
+  reservation?: Types.ObjectId | string;
 }
 
 @Injectable()
@@ -31,21 +29,70 @@ export class PaymentRepository {
 
   private static readonly populate = [
     { path: 'user', select: USER_PUBLIC_FIELDS },
-    { path: 'items.product', select: PRODUCT_PUBLIC_FIELDS },
-    { path: 'items.variant', select: VARIANT_PUBLIC_FIELDS },
+    { path: 'order' },
   ];
 
-  async create(data: CreatePaymentPayload): Promise<PaymentDocument> {
-    return this.paymentModel.create({
-      user: data.user,
-      items: data.items,
-      subtotal: data.subtotal,
-      deliveryFee: data.deliveryFee,
-      amount: data.amount,
-      provider: data.provider,
-      currency: data.currency.toUpperCase(),
-      status: data.status ?? PaymentStatus.PENDING,
-    });
+  async create(
+    data: CreatePaymentPayload,
+    session?: ClientSession,
+  ): Promise<PaymentDocument> {
+    const [doc] = await this.paymentModel.create(
+      [
+        {
+          user: data.user,
+          order: data.order,
+          subtotal: data.subtotal,
+          deliveryFee: data.deliveryFee,
+          amount: data.amount,
+          provider: data.provider,
+          currency: data.currency.toUpperCase(),
+          status: data.status ?? PaymentStatus.PENDING,
+          reservation: data.reservation,
+          images: [],
+        },
+      ],
+      { session },
+    );
+    return doc;
+  }
+
+  async setReservation(
+    id: Types.ObjectId | string,
+    reservationId: Types.ObjectId,
+    session?: ClientSession,
+  ): Promise<void> {
+    await this.paymentModel
+      .findByIdAndUpdate(
+        id,
+        { $set: { reservation: reservationId } },
+        { session },
+      )
+      .exec();
+  }
+
+  async markPaidManual(
+    id: Types.ObjectId | string,
+    data: {
+      images: string[];
+      note?: string;
+      paidBy: Types.ObjectId | string;
+    },
+  ): Promise<PaymentDocument | null> {
+    return this.paymentModel
+      .findOneAndUpdate(
+        { _id: id, status: PaymentStatus.PENDING },
+        {
+          $set: {
+            status: PaymentStatus.PAID,
+            images: data.images,
+            note: data.note,
+            paidBy: data.paidBy,
+            paidAt: new Date(),
+          },
+        },
+        { new: true },
+      )
+      .exec();
   }
 
   async findPendingForUser(
@@ -53,6 +100,7 @@ export class PaymentRepository {
   ): Promise<PaymentDocument | null> {
     return this.paymentModel
       .findOne({ user: userId, status: PaymentStatus.PENDING })
+      .populate(PaymentRepository.populate)
       .exec();
   }
 
@@ -78,7 +126,10 @@ export class PaymentRepository {
   }
 
   async findByReference(reference: string): Promise<PaymentDocument | null> {
-    return this.paymentModel.findOne({ providerReference: reference }).exec();
+    return this.paymentModel
+      .findOne({ providerReference: reference })
+      .populate(PaymentRepository.populate)
+      .exec();
   }
 
   async setReference(

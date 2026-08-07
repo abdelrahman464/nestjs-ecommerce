@@ -44,7 +44,11 @@ export class StripeStrategy implements IPaymentStrategy {
         price_data: {
           currency,
           unit_amount: Math.round(params.deliveryFee * 100),
-          product_data: { name: 'Delivery' },
+          product_data: {
+            name:
+              this.configService.get<string>('app.name') +
+              ' - Delivery Fee',
+          },
         },
       },
     ];
