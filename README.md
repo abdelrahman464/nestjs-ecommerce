@@ -26,7 +26,7 @@ All endpoints are served under the global prefix **`/api/v1`** (default port `80
 | Products | `src/modules/products/` | Catalog entity + **variants** (SKU, barcode, options matrix, default variant) |
 | Warehouses | `src/modules/warehouses/` | Locations, single default warehouse, transfers between sites |
 | Inventory | `src/modules/inventory/` | Append-only movement ledger, per-warehouse levels, **reservations** |
-| Cart | `src/modules/cart/` | Cart lines validated against live availability |
+| Cart | `src/modules/cart/` | Per-user cart with live availability + price-drift flags, quantity caps, conflict-safe writes |
 | Orders | `src/modules/orders/` | Line items + totals + status (source of truth for "what was bought") |
 | Payments | `src/modules/payments/` | Checkout orchestration, webhooks, admin mark-paid, provider strategies |
 | Reviews | `src/modules/reviews/` | Product reviews, denormalized rating on product |
@@ -141,6 +141,6 @@ No test suite exists yet (`jest`/`test:e2e` scripts are present from the Nest CL
 
 ## Roadmap
 
-Done: product hardening, variants, inventory ledger, multi-warehouse, reservations/allocation, orders + payments orchestration.
+Done: product hardening, variants, inventory ledger, multi-warehouse, reservations/allocation, orders + payments orchestration, cart hardening.
 
-Next: cart hardening → payments hardening (refunds/retries) → pricing → coupons → search → SEO → wishlist → auth + Redis sessions → queues (reservation expiry sweeper, emails) → audit log → analytics → observability (Pino, OpenTelemetry).
+Next: payments hardening (refunds/retries) → pricing → coupons → search → SEO → wishlist → auth + Redis sessions → queues (reservation expiry sweeper, emails) → audit log → analytics → observability (Pino, OpenTelemetry).

@@ -19,6 +19,7 @@ import { OrdersService } from '../orders/orders.service';
 import { ProductVariantsService } from '../products/product-variants.service';
 import { Product, ProductDocument } from '../products/schemas/product.schema';
 import { ProductVariantDocument } from '../products/schemas/product-variant.schema';
+import { resolveVariantUnitPrice } from '../products/utils/pricing.util';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
 import { MarkPaymentPaidDto } from './dto/mark-payment-paid.dto';
@@ -78,7 +79,7 @@ export class PaymentsService {
     userId: string,
     dto: CreateCheckoutDto,
   ): Promise<CheckoutResponse> {
-    const cart = await this.cartService.getCart(userId);
+    const cart = await this.cartService.getCartDocument(userId);
     if (!cart.items.length) {
       throw new I18nHttpException(HttpStatus.BAD_REQUEST, 'payment.cartEmpty');
     }
@@ -426,7 +427,7 @@ export class PaymentsService {
         );
       }
 
-      const unitPrice = this.resolveUnitPrice(freshVariant);
+      const unitPrice = resolveVariantUnitPrice(freshVariant);
       if (unitPrice <= 0) {
         throw new I18nHttpException(
           HttpStatus.BAD_REQUEST,
@@ -528,12 +529,6 @@ We will process your order shortly.`;
   private getDeliveryFee(): number {
     const fee = this.configService.get<number>('payment.deliveryFee');
     return Number.isFinite(fee) && fee >= 0 ? fee : 70;
-  }
-
-  private resolveUnitPrice(variant: ProductVariantDocument): number {
-    return variant.priceAfterDiscount && variant.priceAfterDiscount > 0
-      ? variant.priceAfterDiscount
-      : variant.price;
   }
 
   private resolveProductName(product: ProductDocument): string {

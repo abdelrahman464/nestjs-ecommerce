@@ -14,6 +14,17 @@ export class CartItem {
 
   @Prop({ required: true, min: 1 })
   quantity: number;
+
+  /**
+   * Snapshot taken whenever this line's quantity is set (add / merge / update).
+   * Never used for billing (checkout always re-prices live) — only lets the
+   * cart flag "price changed since you added this" without an extra lookup.
+   */
+  @Prop({ required: true, min: 0 })
+  unitPriceAtAdd: number;
+
+  @Prop({ required: true, trim: true })
+  productNameAtAdd: string;
 }
 
 export const CartItemSchema = SchemaFactory.createForClass(CartItem);

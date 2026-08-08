@@ -11,13 +11,18 @@ export class CartRepository {
     @InjectModel(Cart.name) private readonly cartModel: Model<CartDocument>,
   ) {}
 
+  /**
+   * `deletedAt` is appended (not part of the public field lists) so the
+   * service can detect soft-deleted variants/products for availability
+   * checks. It is never returned as-is — responses go through `CartView`.
+   */
   private static readonly populate = [
     {
       path: 'items.variant',
-      select: VARIANT_PUBLIC_FIELDS,
+      select: `${VARIANT_PUBLIC_FIELDS} deletedAt`,
       populate: {
         path: 'product',
-        select: PRODUCT_PUBLIC_FIELDS,
+        select: `${PRODUCT_PUBLIC_FIELDS} deletedAt`,
       },
     },
   ];

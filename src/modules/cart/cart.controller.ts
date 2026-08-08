@@ -17,14 +17,14 @@ import { CartService } from './cart.service';
 import { AddCartItemDto } from './dto/add-cart-item.dto';
 import { BulkAddCartItemsDto } from './dto/bulk-add-cart-items.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
-import { CartDocument } from './schemas/cart.schema';
+import { CartView } from './types/cart-view.type';
 
 @Controller('cart')
 export class CartController {
   constructor(private readonly cartService: CartService) {}
 
   @Get()
-  async getCart(@GetAuthUser() authUser: AuthenticatedUser): Promise<CartDocument> {
+  async getCart(@GetAuthUser() authUser: AuthenticatedUser): Promise<CartView> {
     return this.cartService.getCart(authUser.id);
   }
 
@@ -33,7 +33,7 @@ export class CartController {
   async addItemsBulk(
     @GetAuthUser() authUser: AuthenticatedUser,
     @Body() dto: BulkAddCartItemsDto,
-  ): Promise<CartDocument> {
+  ): Promise<CartView> {
     return this.cartService.addItemsBulk(authUser.id, dto.items);
   }
 
@@ -42,7 +42,7 @@ export class CartController {
   async addItem(
     @GetAuthUser() authUser: AuthenticatedUser,
     @Body() dto: AddCartItemDto,
-  ): Promise<CartDocument> {
+  ): Promise<CartView> {
     return this.cartService.addItem(authUser.id, dto);
   }
 
@@ -51,7 +51,7 @@ export class CartController {
     @GetAuthUser() authUser: AuthenticatedUser,
     @Param('productId', ParseObjectIdPipe) productId: Types.ObjectId,
     @Body() dto: UpdateCartItemDto,
-  ): Promise<CartDocument> {
+  ): Promise<CartView> {
     return this.cartService.updateItem(
       authUser.id,
       productId.toString(),
@@ -64,7 +64,7 @@ export class CartController {
   async removeItem(
     @GetAuthUser() authUser: AuthenticatedUser,
     @Param('productId', ParseObjectIdPipe) productId: Types.ObjectId,
-  ): Promise<CartDocument> {
+  ): Promise<CartView> {
     return this.cartService.removeItem(authUser.id, productId.toString());
   }
 
@@ -72,7 +72,7 @@ export class CartController {
   @HttpCode(HttpStatus.OK)
   async clearCart(
     @GetAuthUser() authUser: AuthenticatedUser,
-  ): Promise<CartDocument> {
+  ): Promise<CartView> {
     return this.cartService.clearCart(authUser.id);
   }
 }

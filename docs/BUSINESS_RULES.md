@@ -128,7 +128,7 @@ A variant is sellable only if **all** of:
 - its parent product exists and is not `inactive`,
 - the variant itself is not `inactive` or `outOfStock`, and `stock > 0`.
 
-This is the gate used by checkout/manual-order item building (§8). Note it checks
+This is the gate used by checkout/manual-order item building (§9). Note it checks
 the **cached stock**, not live availability — the reservation layer's
 `assertAvailable` (§6) is the real "can we actually promise this many units"
 check, because stock may already be held by other pending reservations.
@@ -272,7 +272,61 @@ to other pending orders.
 
 ---
 
-## 7. Orders
+## 7. Cart
+
+One cart per user (`cart.user` unique). The cart is a **shopping list, not a
+hold** — adding an item never touches `reservedQuantity`; the real stock hold
+only happens at checkout (§6). This has a direct consequence: the cart's
+availability check is **advisory**. Two customers can both be shown the last
+unit as available; whoever checks out first wins the reservation, and the
+other is rejected at checkout, not at add-to-cart time. Cart hardening (this
+section) is about making that gap visible to the client, not eliminating it —
+eliminating it would mean holding stock for people who haven't committed to
+buy, which is worse UX.
+
+### Price snapshot (drift detection only)
+
+- Each line stores `unitPriceAtAdd` and `productNameAtAdd`, re-stamped from the
+  **live** variant every time the line's quantity is set (create, merge via
+  `addItem`, or `updateItem`) via the shared `resolveVariantUnitPrice` helper
+  (also used by checkout and manual orders — one price rule, not three).
+- These fields are **never used for billing**. Checkout always re-prices from
+  the live variant (§9). They exist only so the read model can flag
+  `priceChanged` without an extra round trip.
+
+### Read-time enrichment (`CartView`)
+
+`GET /cart` and every mutation return a computed view, not the raw document.
+Nothing is silently dropped or auto-corrected — the client decides what to do
+with a flagged line. Per item:
+
+- `available` + `unavailableReason` (`deleted` | `inactive` | `outOfStock` |
+  `insufficientStock`), checked in that priority order against the **live**
+  variant/product (soft-delete, status) and live `ReservationsService.getAvailability`
+  (not the cached `variant.stock`).
+- `priceChanged` = live price ≠ `unitPriceAtAdd` (only meaningful when available).
+- `lineSubtotal` = `currentUnitPrice × quantity` for available lines, `0` otherwise.
+
+Cart-level:
+
+- `subtotal` = sum of `lineSubtotal` — **purchasable lines only**.
+- `itemsCount` = sum of quantities across **all** lines, including unavailable
+  ones, so a cart badge doesn't silently shrink because something went out of
+  stock.
+
+### Other rules
+
+- **Quantity cap per line** (`CART_MAX_ITEM_QUANTITY`, currently 50) is
+  independent of stock — a sanity ceiling, not an availability check.
+- **Concurrency:** cart writes mutate the `items` array, which Mongoose
+  versions by default (`__v`). A losing concurrent write (double-click, two
+  tabs) gets **one automatic retry** against freshly re-read state; a second
+  collision returns `cart.conflict` (409) instead of a raw error.
+- Only `CartService` writes to cart documents.
+
+---
+
+## 8. Orders
 
 - Order is the source of truth for **what was bought**: `items[]`
   (variant, product, quantity, unitPrice, productName snapshot), `subtotal`,
@@ -290,7 +344,7 @@ to other pending orders.
 
 ---
 
-## 8. Payments
+## 9. Payments
 
 - Payment holds the money side: `amount`, `currency`, `provider`, `status`,
   provider reference, proof fields. It links to `order` (and `reservation`);
@@ -336,7 +390,7 @@ Same one-TX pattern with `source = manual_order`, provider `manual`, and the
 
 ---
 
-## 9. Transactions & concurrency — summary
+## 10. Transactions & concurrency — summary
 
 - MongoDB transactions require a **replica set**.
 - Pattern everywhere: `run(session)` — join the caller's session if given,
@@ -347,7 +401,7 @@ Same one-TX pattern with `source = manual_order`, provider `manual`, and the
   - stock cache: optimistic lock on previous `variant.stock`,
   - idempotency: unique movement key + "already confirmed/paid → return" checks.
 
-## 10. Ownership cheat-sheet
+## 11. Ownership cheat-sheet
 
 | Field / collection | Only writer |
 |---|---|
@@ -358,10 +412,11 @@ Same one-TX pattern with `source = manual_order`, provider `manual`, and the
 | `inventory_levels.reservedQuantity` | `ReservationsService` |
 | `inventory_movements` | `InventoryService.postMovement` (insert only) |
 | `inventory_reservations.status` | `ReservationsService` |
+| `cart.items` (incl. `unitPriceAtAdd`/`productNameAtAdd`) | `CartService` |
 | `orders.status` | `OrdersService`, driven by Payments flows |
 | `payments.status` | `PaymentsService` (webhook / mark-paid / cancel) |
 
-## 11. Operational prerequisites
+## 12. Operational prerequisites
 
 - MongoDB running as a **replica set** (transactions).
 - At least one active **default warehouse** must exist before creating variants

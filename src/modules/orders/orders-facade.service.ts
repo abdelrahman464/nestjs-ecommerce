@@ -17,6 +17,7 @@ import {
 } from '../payments/schemas/payment.schema';
 import { ProductVariantsService } from '../products/product-variants.service';
 import { Product, ProductDocument } from '../products/schemas/product.schema';
+import { resolveVariantUnitPrice } from '../products/utils/pricing.util';
 import { CreateManualOrderDto } from './dto/create-manual-order.dto';
 import { OrderSource } from './enums/order.enums';
 import { OrdersService } from './orders.service';
@@ -164,10 +165,7 @@ export class OrdersFacadeService {
 
       const productName =
         getLocalizedValue(product.title, DEFAULT_CONTENT_LOCALE) ?? 'Product';
-      const unitPrice =
-        variant.priceAfterDiscount && variant.priceAfterDiscount > 0
-          ? variant.priceAfterDiscount
-          : variant.price;
+      const unitPrice = resolveVariantUnitPrice(variant);
 
       items.push({
         variant: variant._id,
