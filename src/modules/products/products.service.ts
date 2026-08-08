@@ -215,6 +215,7 @@ export class ProductsService {
 
   async delete(id: Types.ObjectId): Promise<void> {
     await this.findOne(id);
+    await this.variantsService.assertProductVariantsDeletable(id);
     const session = await this.connection.startSession();
     try {
       await session.withTransaction(async () => {

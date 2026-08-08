@@ -95,6 +95,13 @@ export class InventoryService {
     return { data, totalStock };
   }
 
+  /** Used by product/variant deletion guards — true if any variant still has on-hand stock. */
+  async hasOnHandStock(
+    variantIds: Array<Types.ObjectId | string>,
+  ): Promise<boolean> {
+    return this.levelsRepository.existsPositiveStockForVariants(variantIds);
+  }
+
   async findLevelsByWarehouse(
     warehouseId: Types.ObjectId,
     queryParams: Record<string, unknown>,

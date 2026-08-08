@@ -32,6 +32,18 @@ export class InventoryLevelsRepository {
     return this.levelModel.find({ variant: variantId }).exec();
   }
 
+  /** True if any of these variants has on-hand stock in any warehouse. */
+  async existsPositiveStockForVariants(
+    variantIds: Array<Types.ObjectId | string>,
+  ): Promise<boolean> {
+    if (!variantIds.length) return false;
+    // is any of theses variants has on-hand stock in any warehouse
+    const count = await this.levelModel
+      .countDocuments({ variant: { $in: variantIds }, quantity: { $gt: 0 } })
+      .exec();
+    return count > 0;
+  }
+
   async findByWarehouse(
     warehouseId: Types.ObjectId | string,
     queryParams: Record<string, unknown>,

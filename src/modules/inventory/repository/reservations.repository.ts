@@ -59,6 +59,20 @@ export class ReservationsRepository {
     return this.reservationModel.findOne({ payment: paymentId }).exec();
   }
 
+  /** True if any of these variants has a pending (not yet confirmed/released/expired) reservation line. */
+  async existsPendingForVariants(
+    variantIds: Array<Types.ObjectId | string>,
+  ): Promise<boolean> {
+    if (!variantIds.length) return false;
+    const count = await this.reservationModel
+      .countDocuments({
+        status: ReservationStatus.PENDING,
+        'lines.variant': { $in: variantIds },
+      })
+      .exec();
+    return count > 0;
+  }
+
   async updateStatus(
     id: Types.ObjectId | string,
     status: ReservationStatus,

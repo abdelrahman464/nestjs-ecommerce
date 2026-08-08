@@ -119,6 +119,13 @@ export class ReservationsService {
     };
   }
 
+  /** Used by product/variant deletion guards — true if any variant still has a pending reservation. */
+  async hasPendingReservation(
+    variantIds: Array<Types.ObjectId | string>,
+  ): Promise<boolean> {
+    return this.reservationsRepository.existsPendingForVariants(variantIds);
+  }
+
   async assertAvailable(items: ReserveItemInput[]): Promise<void> {
     for (const item of items) {
       const availability = await this.getAvailability(String(item.variantId));

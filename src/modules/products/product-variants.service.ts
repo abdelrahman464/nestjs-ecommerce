@@ -7,6 +7,7 @@ import {
   isDuplicateKeyError,
 } from '../../common/utils/mongo-error.util';
 import { InventoryService } from '../inventory/inventory.service';
+import { ReservationsService } from '../inventory/reservations.service';
 import {
   CreateDefaultVariantDto,
   CreateProductVariantDto,
@@ -33,6 +34,7 @@ export class ProductVariantsService {
     private readonly variantRepository: ProductVariantRepository,
     private readonly productRepository: ProductRepository,
     private readonly inventoryService: InventoryService,
+    private readonly reservationsService: ReservationsService,
     @InjectConnection() private readonly connection: Connection,
   ) {}
 
@@ -423,6 +425,8 @@ export class ProductVariantsService {
       );
     }
 
+    await this.assertVariantsDeletable([variantId], 'variant');
+
     await this.variantRepository.softDeleteVariant(variantId);
 
     if (existing.isDefault) {
@@ -432,6 +436,49 @@ export class ProductVariantsService {
           isDefault: true,
         });
       }
+    }
+  }
+
+  /**
+   * Guard used by ProductsService.delete() — blocks deleting a whole product
+   * while any of its (non-deleted) variants still has on-hand stock or a
+   * pending reservation, mirroring the single-variant check in delete().
+   */
+  async assertProductVariantsDeletable(
+    productId: Types.ObjectId,
+  ): Promise<void> {
+    const variants = await this.variantRepository.findByProductId(productId);
+    await this.assertVariantsDeletable(
+      variants.map((v) => v._id),
+      'product',
+    );
+  }
+
+  private async assertVariantsDeletable(
+    variantIds: Types.ObjectId[],
+    scope: 'variant' | 'product',
+  ): Promise<void> {
+    if (!variantIds.length) return;
+
+    const hasStock = await this.inventoryService.hasOnHandStock(variantIds);
+    if (hasStock) {
+      throw new I18nHttpException(
+        HttpStatus.BAD_REQUEST,
+        scope === 'variant'
+          ? 'product.cannotDeleteVariantWithStock'
+          : 'product.cannotDeleteProductWithStock',
+      );
+    }
+
+    const hasPendingReservation =
+      await this.reservationsService.hasPendingReservation(variantIds);
+    if (hasPendingReservation) {
+      throw new I18nHttpException(
+        HttpStatus.BAD_REQUEST,
+        scope === 'variant'
+          ? 'product.cannotDeleteVariantWithPendingReservation'
+          : 'product.cannotDeleteProductWithPendingReservation',
+      );
     }
   }
 
