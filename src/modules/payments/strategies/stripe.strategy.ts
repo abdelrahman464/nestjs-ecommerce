@@ -6,6 +6,7 @@ import { PaymentProvider } from '../enums/payment-provider.enum';
 import { PaymentStatus } from '../enums/payment-status.enum';
 import {
   IPaymentStrategy,
+  RefundResult,
   WebhookHeaders,
 } from '../interfaces/payment-strategy.interface';
 import {
@@ -132,6 +133,46 @@ export class StripeStrategy implements IPaymentStrategy {
       status: this.mapStatus(event.type),
       raw: event as unknown,
     };
+  }
+
+  /**
+   * Full refund of a completed checkout. Checkout Sessions can't be refunded
+   * directly — refunds apply to the underlying PaymentIntent, so we resolve
+   * that first.
+   */
+  async refund(reference: string, amount: number): Promise<RefundResult> {
+    const session = await this.stripe.checkout.sessions.retrieve(reference);
+    const paymentIntentId =
+      typeof session.payment_intent === 'string'
+        ? session.payment_intent
+        : session.payment_intent?.id;
+
+    if (!paymentIntentId) {
+      this.logger.error(
+        `Cannot refund session ${reference}: no payment_intent`,
+      );
+      throw new I18nHttpException(HttpStatus.BAD_GATEWAY, 'payment.refundFailed');
+    }
+
+    try {
+      const refund = await this.stripe.refunds.create({
+        payment_intent: paymentIntentId,
+        amount: Math.round(amount * 100),
+      });
+      return { refundReference: refund.id };
+    } catch (error) {
+      this.logger.error(`Stripe refund failed for ${reference}: ${error}`);
+      throw new I18nHttpException(HttpStatus.BAD_GATEWAY, 'payment.refundFailed');
+    }
+  }
+
+  /** Active poll used by the reconciliation sweep to catch missed webhooks. */
+  async getStatus(reference: string): Promise<PaymentStatus> {
+    const session = await this.stripe.checkout.sessions.retrieve(reference);
+
+    if (session.payment_status === 'paid') return PaymentStatus.PAID;
+    if (session.status === 'expired') return PaymentStatus.EXPIRED;
+    return PaymentStatus.PENDING;
   }
 
   private mapStatus(eventType: string): PaymentStatus {

@@ -159,4 +159,67 @@ export class PaymentRepository {
       .populate(PaymentRepository.populate)
       .exec();
   }
+
+  async markRefunded(
+    id: Types.ObjectId | string,
+    data: {
+      refundedBy: Types.ObjectId | string;
+      reason?: string;
+      refundReference?: string;
+    },
+  ): Promise<PaymentDocument | null> {
+    return this.paymentModel
+      .findOneAndUpdate(
+        { _id: id, status: PaymentStatus.PAID },
+        {
+          $set: {
+            status: PaymentStatus.REFUNDED,
+            refundedAt: new Date(),
+            refundedBy: data.refundedBy,
+            refundReason: data.reason,
+            refundReference: data.refundReference,
+          },
+        },
+        { new: true },
+      )
+      .populate(PaymentRepository.populate)
+      .exec();
+  }
+
+  /**
+   * PENDING payments due for another provider status poll — either never
+   * checked yet, or their backoff window elapsed.
+   *
+   * `provider: { $ne: MANUAL }` is a coarse filter, not "only Stripe" —
+   * Manual is the only provider that structurally can never be polled (no
+   * external session to check). Any other provider (Stripe today, more
+   * later) is a candidate here; PaymentReconciliationService does the final
+   * check (`strategy.getStatus` exists) so adding a new provider that
+   * implements getStatus() gets swept automatically, no repo change needed.
+   */
+  async findDueForReconciliation(now: Date): Promise<PaymentDocument[]> {
+    return this.paymentModel
+      .find({
+        status: PaymentStatus.PENDING,
+        provider: { $ne: PaymentProvider.MANUAL },
+        providerReference: { $exists: true, $ne: null },
+        $or: [
+          { nextReconciliationAt: null },
+          { nextReconciliationAt: { $lte: now } },
+        ],
+      })
+      .exec();
+  }
+
+  async bumpReconciliation(
+    id: Types.ObjectId | string,
+    nextReconciliationAt: Date,
+    attempts: number,
+  ): Promise<void> {
+    await this.paymentModel
+      .findByIdAndUpdate(id, {
+        $set: { nextReconciliationAt, reconciliationAttempts: attempts },
+      })
+      .exec();
+  }
 }

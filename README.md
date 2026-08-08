@@ -11,7 +11,8 @@ All endpoints are served under the global prefix **`/api/v1`** (default port `80
 | Framework | NestJS 10 (controller → service → repository) |
 | Database | MongoDB + Mongoose 8 (**replica set required** — transactions) |
 | Auth | JWT (access + refresh, cookie-based) + Google OAuth 2.0, role guard |
-| Payments | Stripe (redirect + webhook), manual (admin proof) |
+| Payments | Stripe (redirect + webhook), manual (admin proof) — refunds + reconciliation on top |
+| Scheduling | `@nestjs/schedule` — in-process cron for payment reconciliation |
 | i18n | nestjs-i18n — API messages in `en` / `de`, localized content fields |
 | Email | Nodemailer (order/payment notifications) |
 | Validation | class-validator via `I18nValidationPipe` (whitelist + forbid unknown) |
@@ -28,7 +29,7 @@ All endpoints are served under the global prefix **`/api/v1`** (default port `80
 | Inventory | `src/modules/inventory/` | Append-only movement ledger, per-warehouse levels, **reservations** |
 | Cart | `src/modules/cart/` | Per-user cart with live availability + price-drift flags, quantity caps, conflict-safe writes |
 | Orders | `src/modules/orders/` | Line items + totals + status (source of truth for "what was bought") |
-| Payments | `src/modules/payments/` | Checkout orchestration, webhooks, admin mark-paid, provider strategies |
+| Payments | `src/modules/payments/` | Checkout orchestration, webhooks, admin mark-paid/refund, provider strategies, scheduled reconciliation |
 | Reviews | `src/modules/reviews/` | Product reviews, denormalized rating on product |
 | Articles | `src/modules/articles/` | CMS-style content |
 | Files upload | `src/modules/files-upload/` | Image upload with magic-byte validation |
@@ -55,8 +56,9 @@ Key invariants (full list in [docs/BUSINESS_RULES.md](docs/BUSINESS_RULES.md)):
 - `variant.stock` is a **cache** = sum of `inventory_levels.quantity` across warehouses.
 - Every stock change goes through `InventoryService.postMovement` — one ledger row per change, idempotent on `(referenceType, referenceId, variant, type, warehouse)`.
 - `available = quantity − reservedQuantity` per warehouse; reservations hold stock with atomic conditional updates (no oversell under concurrency).
-- Reservations expire lazily: checkout 15 min, manual order 48 h.
+- Reservations expire lazily on confirm, and proactively via a cron sweep (`PaymentReconciliationService`, every minute) that also re-polls Stripe (with backoff) for payments a webhook never reached.
 - Line items live only on the **Order**; Payment links to the order.
+- Refunds (admin, full-amount, Stripe/Manual) restock the exact reservation lines sold — same variant, same warehouse.
 
 ## Project docs
 
@@ -125,7 +127,8 @@ All routes below are relative to `/api/v1`. Most write endpoints require a staff
 | Cart | `GET/POST/PATCH/DELETE /cart` (availability-checked) |
 | Checkout | `POST /payments/checkout`, `POST /payments/checkout/resume`, `POST /payments/checkout/cancel` |
 | Webhooks | `POST /payments/webhook/:provider` (raw body, signature-verified) |
-| Manual orders | `POST /orders/manual` (admin), `PATCH /payments/:id/mark-paid` (admin, with proof images/note) |
+| Manual orders | `POST /orders/manual` (admin), `POST /payments/:id/markPaid` (admin, with proof images/note) |
+| Refunds | `POST /payments/:id/refund` (admin, full amount, Stripe/Manual only) |
 | Orders | `GET /orders/my`, `GET /orders` (staff), `GET /orders/:id` |
 
 Localization: pass `?lang=en`, `Accept-Language`, or `x-lang` header. Responses are wrapped by a global `data` envelope interceptor.
@@ -141,6 +144,6 @@ No test suite exists yet (`jest`/`test:e2e` scripts are present from the Nest CL
 
 ## Roadmap
 
-Done: product hardening, variants, inventory ledger, multi-warehouse, reservations/allocation, orders + payments orchestration, cart hardening.
+Done: product hardening, variants, inventory ledger, multi-warehouse, reservations/allocation, orders + payments orchestration, cart hardening, payments hardening (refunds, reconciliation sweep with backoff).
 
-Next: payments hardening (refunds/retries) → pricing → coupons → search → SEO → wishlist → auth + Redis sessions → queues (reservation expiry sweeper, emails) → audit log → analytics → observability (Pino, OpenTelemetry).
+Next: pricing → coupons → search → SEO → wishlist → auth + Redis sessions → queues (emails) → audit log → analytics → observability (Pino, OpenTelemetry).

@@ -225,7 +225,8 @@ A reservation holds stock for one order between "customer committed" and
 - `lines[]`: variant + product + **warehouse** + quantity — the allocation result.
 - `status`: `pending` → `confirmed` | `released` | `expired`.
 - `expiresAt` (TTL by source, `reservation.constants.ts`):
-  - checkout: **15 minutes** (hold while redirected to the provider),
+  - checkout: **30 minutes** (hold while redirected to the provider — long
+    enough to cover slow 3D Secure / bank-redirect flows),
   - manual order: **48 hours** (bank transfer / payment proof takes longer).
 
 ### Allocation strategy (S1)
@@ -332,7 +333,7 @@ Cart-level:
   (variant, product, quantity, unitPrice, productName snapshot), `subtotal`,
   `deliveryFee`, `amount`, `currency`.
 - `source`: `checkout` (customer self-serve) | `manual_order` (admin for a customer).
-- `status`: `pending_payment` → `paid` | `cancelled`.
+- `status`: `pending_payment` → `paid` | `cancelled` | `refunded`.
 - `user` = customer; `createdBy` = customer or admin.
 - A customer can only read their own orders; staff can read all.
 - **One pending order per user** — checkout is blocked while a
@@ -388,6 +389,67 @@ Same one-TX pattern with `source = manual_order`, provider `manual`, and the
 - The repository update is itself conditional on `pending` (second defense
   against two admins racing), then fulfills with `referenceType = manual_order`.
 
+### Refunds (admin, `PaymentsService.refund`)
+
+- **Scope**: full-amount only, admin/manager-initiated, **Stripe and Manual
+  providers only**. Klarna (and any future provider without a `refund()`
+  strategy method) throws `payment.refundNotSupported` — the interface method
+  is optional precisely so unsupported providers don't need a stub.
+- Only allowed while payment is `paid` (`payment.cannotRefund` otherwise) — no
+  double refunds, no refunding a payment that never completed.
+- Stripe: resolves the Checkout Session's underlying `payment_intent` and
+  calls `stripe.refunds.create`; the returned refund id is stored as
+  `payment.refundReference`. Manual: no provider call, the money was returned
+  offline by the admin.
+- **Restock** replays the exact `reservation.lines` recorded at sale time
+  (same variant, same warehouse, same quantity) as a `RETURN` movement with
+  `referenceType = refund`, `referenceId = orderId` — it reverses the original
+  `SALE` movement precisely instead of guessing a warehouse.
+- One transaction: post the restock movement(s) + `order.status = refunded`.
+  Payment is flipped to `refunded` (with `refundedAt`/`refundedBy`/
+  `refundReason`/`refundReference`) after that transaction commits.
+- Reservation status is **not** changed by a refund — it stays `confirmed`;
+  refund is a separate, later event layered on top of a completed sale.
+
+### Reconciliation (`PaymentReconciliationService`, cron)
+
+A scheduled sweep (`@Cron(EVERY_MINUTE)`) catches payments that would
+otherwise get stuck, independent of any webhook:
+
+1. **Expire stale reservations** — any `pending` reservation whose
+   `expiresAt` has passed (customer abandoned checkout) is released
+   (`ReservationsService.releaseByOrderId(..., expired)`), its order is
+   marked `cancelled`, and its payment is marked `expired`. **Before**
+   releasing, if the payment's provider supports `getStatus()`, it's asked
+   one last time whether the payment actually already succeeded (closes the
+   race where a slow 3D Secure / bank-redirect checkout completes right as
+   the TTL passes). If so: the reservation's `expiresAt` is pushed a few
+   minutes forward (stock hasn't been released yet, so this is safe) and the
+   payment is fulfilled normally instead of expired — no stock is lost, no
+   captured payment is silently dropped. `PaymentsService.applyStatusTransition`
+   also refuses to silently ignore a late `paid` signal on an already
+   non-`pending` payment; it logs an error for manual admin follow-up
+   (fulfill if stock allows, refund otherwise) instead, since that residual
+   sliver of a race (webhook/poll disagreement in the same instant as
+   expiry) can't be fully closed without distributed locking.
+2. **Re-poll stuck payments** — a `pending` payment (any provider except
+   `manual`) with a `providerReference` that hasn't heard from a webhook is
+   actively checked via `strategy.getStatus()`. Any resulting status flows
+   through the same `PaymentsService.applyStatusTransition()` the webhook
+   handler uses, so a late webhook and a reconciliation poll can never
+   disagree. Today only Stripe implements `getStatus()`; the query itself
+   isn't hardcoded to Stripe — a future provider gets swept automatically
+   the moment it implements `getStatus()` on its strategy, no repo change
+   needed. Providers that don't (Klarna today) are skipped in the service
+   loop (`if (!strategy.getStatus) continue`), not filtered out of the query.
+3. **Backoff, not busy-polling** — each miss (still `pending`) increases
+   `payment.reconciliationAttempts` and pushes `payment.nextReconciliationAt`
+   out (2m, 4m, 8m, ... capped at 30m). The sweep's DB query only pulls
+   payments whose backoff window has actually elapsed, so a payment stuck
+   pending for hours doesn't get polled every minute.
+- Manual payments are excluded from the poll (no external session to check
+  — the admin marks them paid directly); they rely on the expiry pass only.
+
 ---
 
 ## 10. Transactions & concurrency — summary
@@ -414,13 +476,17 @@ Same one-TX pattern with `source = manual_order`, provider `manual`, and the
 | `inventory_reservations.status` | `ReservationsService` |
 | `cart.items` (incl. `unitPriceAtAdd`/`productNameAtAdd`) | `CartService` |
 | `orders.status` | `OrdersService`, driven by Payments flows |
-| `payments.status` | `PaymentsService` (webhook / mark-paid / cancel) |
+| `payments.status` | `PaymentsService` (webhook / mark-paid / cancel / refund), `PaymentReconciliationService` (expire / re-poll) |
 
 ## 12. Operational prerequisites
 
 - MongoDB running as a **replica set** (transactions).
 - At least one active **default warehouse** must exist before creating variants
   with initial stock or accepting checkouts.
+- `PaymentReconciliationService`'s cron sweep runs in-process via
+  `@nestjs/schedule` (`ScheduleModule.forRoot()` in `AppModule`) — no external
+  scheduler required, but only one app instance should run it in a
+  multi-instance deployment (not yet guarded by a distributed lock).
 - If upgrading from the pre-warehouse ledger: drop the old unique index
   `referenceType_1_referenceId_1_variant_1_type_1` on `inventory_movements`
   (replaced by the variant that includes `warehouse`).

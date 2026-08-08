@@ -70,6 +70,30 @@ export class Payment {
 
   @Prop({ type: Object })
   rawPayload?: Record<string, unknown>;
+
+  @Prop({ type: Date })
+  refundedAt?: Date;
+
+  @Prop({
+    type: mongoose.Schema.Types.ObjectId,
+    ref: User.name,
+    default: null,
+  })
+  refundedBy?: Types.ObjectId | null;
+
+  @Prop({ trim: true })
+  refundReason?: string;
+
+  /** Provider-side refund id (e.g. Stripe refund.id). Empty for manual payments. */
+  @Prop({ trim: true })
+  refundReference?: string;
+
+  /** Reconciliation backoff — see PaymentReconciliationService. */
+  @Prop({ type: Number, default: 0 })
+  reconciliationAttempts?: number;
+
+  @Prop({ type: Date, default: null })
+  nextReconciliationAt?: Date | null;
 }
 
 export type PaymentDocument = HydratedDocument<Payment>;

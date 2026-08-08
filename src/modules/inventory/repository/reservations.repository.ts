@@ -59,6 +59,30 @@ export class ReservationsRepository {
     return this.reservationModel.findOne({ payment: paymentId }).exec();
   }
 
+  /** Pending reservations whose TTL has already elapsed — swept by PaymentReconciliationService. */
+  async findExpiredPending(
+    now: Date,
+  ): Promise<InventoryReservationDocument[]> {
+    return this.reservationModel
+      .find({ status: ReservationStatus.PENDING, expiresAt: { $lt: now } })
+      .exec();
+  }
+
+  /**
+   * Push a reservation's TTL forward. Used only for the "rescued right at
+   * expiry" case — the payment turned out to already be paid at the
+   * provider, so we buy a few minutes for the normal confirm path to run
+   * without also tripping its own expiry check.
+   */
+  async extendExpiry(
+    id: Types.ObjectId | string,
+    newExpiresAt: Date,
+  ): Promise<void> {
+    await this.reservationModel
+      .findByIdAndUpdate(id, { $set: { expiresAt: newExpiresAt } })
+      .exec();
+  }
+
   /** True if any of these variants has a pending (not yet confirmed/released/expired) reservation line. */
   async existsPendingForVariants(
     variantIds: Array<Types.ObjectId | string>,

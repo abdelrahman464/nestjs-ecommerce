@@ -119,6 +119,21 @@ export class ReservationsService {
     };
   }
 
+  /** Pending reservations whose TTL has elapsed — used by PaymentReconciliationService's expiry pass. */
+  async findExpiredPending(
+    now: Date,
+  ): Promise<InventoryReservationDocument[]> {
+    return this.reservationsRepository.findExpiredPending(now);
+  }
+
+  /** See ReservationsRepository.extendExpiry — rescue path only. */
+  async extendExpiry(
+    reservationId: Types.ObjectId,
+    newExpiresAt: Date,
+  ): Promise<void> {
+    await this.reservationsRepository.extendExpiry(reservationId, newExpiresAt);
+  }
+
   /** Used by product/variant deletion guards — true if any variant still has a pending reservation. */
   async hasPendingReservation(
     variantIds: Array<Types.ObjectId | string>,

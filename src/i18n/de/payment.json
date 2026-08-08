@@ -13,5 +13,8 @@
   "notFound": "Zahlung mit ID {id} nicht gefunden",
   "manualProviderNotAllowed": "Für Admin-Bestellungen POST /orders/manual verwenden; Checkout nur stripe/klarna",
   "checkoutIncomplete": "Zahlung hat keine Order- oder Reservierungsverknüpfung",
-  "notPending": "Zahlung ist nicht im Status pending"
+  "notPending": "Zahlung ist nicht im Status pending",
+  "cannotRefund": "Nur bezahlte Zahlungen können erstattet werden",
+  "refundNotSupported": "Erstattungen werden für den Anbieter dieser Zahlung nicht unterstützt",
+  "refundFailed": "Die Erstattung konnte beim Zahlungsanbieter nicht verarbeitet werden"
 }

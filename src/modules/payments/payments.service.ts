@@ -10,8 +10,11 @@ import { I18nHttpException } from '../../common/filters/i18n-http.exception';
 import { PaginatedResponseDto } from '../../shared/dtos/paginated-response.dto';
 import { CartService } from '../cart/cart.service';
 import { CartDocument } from '../cart/schemas/cart.schema';
+import { InventoryDirection } from '../inventory/enums/inventory-direction.enum';
+import { InventoryMovementType } from '../inventory/enums/inventory-movement-type.enum';
 import { InventoryReferenceType } from '../inventory/enums/inventory-reference-type.enum';
 import { ReservationSource } from '../inventory/enums/reservation.enums';
+import { InventoryService } from '../inventory/inventory.service';
 import { ReservationsService } from '../inventory/reservations.service';
 import { NotificationService } from '../notifications/notification.service';
 import { OrderSource } from '../orders/enums/order.enums';
@@ -23,6 +26,7 @@ import { resolveVariantUnitPrice } from '../products/utils/pricing.util';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
 import { MarkPaymentPaidDto } from './dto/mark-payment-paid.dto';
+import { RefundPaymentDto } from './dto/refund-payment.dto';
 import { PaymentProvider } from './enums/payment-provider.enum';
 import { PaymentStatus } from './enums/payment-status.enum';
 import {
@@ -60,6 +64,7 @@ export class PaymentsService {
     private readonly notificationService: NotificationService,
     private readonly variantsService: ProductVariantsService,
     private readonly reservationsService: ReservationsService,
+    private readonly inventoryService: InventoryService,
     private readonly ordersService: OrdersService,
     @InjectModel(Product.name)
     private readonly productModel: Model<ProductDocument>,
@@ -309,17 +314,127 @@ export class PaymentsService {
       return;
     }
 
-    if (payment.status === PaymentStatus.PAID) return;
-
-    const updated = await this.paymentRepository.updateStatus(
-      payment._id,
+    await this.applyStatusTransition(
+      payment,
       event.status,
       event.raw as Record<string, unknown>,
     );
+  }
 
-    if (event.status === PaymentStatus.PAID && updated) {
+  /**
+   * Single place that turns "a provider says this payment is now X" into
+   * DB writes + fulfillment. Called from the webhook handler (push) and
+   * from PaymentReconciliationService (pull/poll) so both paths can never
+   * disagree on what a status transition means.
+   */
+  async applyStatusTransition(
+    payment: PaymentDocument, // current payment document
+    status: PaymentStatus, // new status come from the provider
+    raw?: Record<string, unknown>,
+  ): Promise<void> {
+    if (payment.status !== PaymentStatus.PENDING) {
+      // A late "paid" signal on a payment we already gave up on (expired/
+      // cancelled) means the provider actually captured money we can no
+      // longer safely auto-fulfill (stock may already be released/resold).
+      // Never drop that silently — surface it for manual admin follow-up
+      // (fulfill if stock allows, refund otherwise).
+      if (status === PaymentStatus.PAID) {
+        this.logger.error(
+          `Payment ${payment._id.toString()} (${payment.provider}) reported PAID but is already ` +
+            `'${payment.status}' locally — likely captured right as its reservation expired. ` +
+            `Needs manual review (fulfill if stock allows, refund otherwise).`,
+        );
+      }
+      return;
+    }
+    if (status === PaymentStatus.PENDING) return;
+
+    const updated = await this.paymentRepository.updateStatus(
+      payment._id,
+      status,
+      raw,
+    );
+    if (!updated) return;
+
+    if (status === PaymentStatus.PAID) {
       await this.fulfillOrder(updated, InventoryReferenceType.WEBHOOK);
     }
+  }
+
+  /**
+   * Admin refund of a PAID payment (Stripe or Manual only — see docs).
+   * Restocks the exact reservation lines sold at checkout so the reversal
+   * lands back in the same warehouse(s) the sale came out of.
+   */
+  async refund(
+    paymentId: Types.ObjectId,
+    dto: RefundPaymentDto,
+    adminId: string,
+  ): Promise<PaymentDocument> {
+    const payment = await this.findPaymentById(paymentId);
+    if (payment.status !== PaymentStatus.PAID) {
+      throw new I18nHttpException(
+        HttpStatus.BAD_REQUEST,
+        'payment.cannotRefund',
+      );
+    }
+
+    let refundReference: string | undefined;
+    if (payment.provider === PaymentProvider.STRIPE) {
+      const strategy = this.strategyRegistry.get(payment.provider);
+      if (!strategy.refund || !payment.providerReference) {
+        throw new I18nHttpException(
+          HttpStatus.BAD_REQUEST,
+          'payment.refundNotSupported',
+        );
+      }
+      const result = await strategy.refund(
+        payment.providerReference,
+        payment.amount,
+      );
+      refundReference = result.refundReference;
+      //---------------------------------------------------------------------------------
+      // other PaymentProvider and any future provider without a wired-up refund flow.
+      //---------------------------------------------------------------------------------
+    } else if (payment.provider !== PaymentProvider.MANUAL) {
+      throw new I18nHttpException(
+        HttpStatus.BAD_REQUEST,
+        'payment.refundNotSupported',
+      );
+    }
+
+    const orderId = this.getOrderId(payment);
+    const reservation = await this.reservationsService.findByOrderId(orderId);
+
+    const session = await this.connection.startSession();
+    try {
+      await session.withTransaction(async () => {
+        for (const line of reservation.lines) {
+          await this.inventoryService.postMovement({
+            variantId: line.variant,
+            warehouseId: line.warehouse,
+            type: InventoryMovementType.RETURN,
+            quantity: line.quantity,
+            direction: InventoryDirection.IN,
+            referenceType: InventoryReferenceType.REFUND,
+            referenceId: orderId,
+            reason: dto.reason,
+            createdBy: adminId,
+            session,
+          });
+        }
+        await this.ordersService.markRefunded(orderId, session);
+      });
+    } finally {
+      await session.endSession();
+    }
+
+    const updated = await this.paymentRepository.markRefunded(paymentId, {
+      refundedBy: adminId,
+      reason: dto.reason,
+      refundReference,
+    });
+    return updated!;
   }
 
   /**

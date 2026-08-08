@@ -115,4 +115,15 @@ export class OrdersService {
       session,
     );
   }
+
+  async markRefunded(
+    orderId: Types.ObjectId | string,
+    session?: ClientSession,
+  ): Promise<void> {
+    await this.ordersRepository.updateStatus(
+      orderId,
+      OrderStatus.REFUNDED,
+      session,
+    );
+  }
 }

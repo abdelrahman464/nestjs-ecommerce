@@ -15,6 +15,7 @@ import { PaginatedResponseDto } from '../../shared/dtos/paginated-response.dto';
 import { UserRole } from '../users/enums/user-role.enum';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
 import { MarkPaymentPaidDto } from './dto/mark-payment-paid.dto';
+import { RefundPaymentDto } from './dto/refund-payment.dto';
 import { CheckoutResponse, PaymentsService } from './payments.service';
 import { PaymentDocument } from './schemas/payment.schema';
 import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
@@ -61,6 +62,17 @@ export class PaymentsController {
     @GetAuthUser() authUser: AuthenticatedUser,
   ): Promise<PaymentDocument> {
     return this.paymentsService.markPaid(id, dto, authUser.id);
+  }
+
+  @Post(':id/refund')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async refund(
+    @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
+    @Body() dto: RefundPaymentDto,
+    @GetAuthUser() authUser: AuthenticatedUser,
+  ): Promise<PaymentDocument> {
+    return this.paymentsService.refund(id, dto, authUser.id);
   }
 
   @Get('my')

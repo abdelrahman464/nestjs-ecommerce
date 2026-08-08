@@ -7,6 +7,7 @@ import { OrdersModule } from '../orders/orders.module';
 import { ProductsModule } from '../products/products.module';
 import { Product, ProductSchema } from '../products/schemas/product.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
+import { PaymentReconciliationService } from './payment-reconciliation.service';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { PaymentRepository } from './repository/payment.repository';
@@ -36,6 +37,7 @@ import { PaymentsWebhookController } from './webhooks/payments-webhook.controlle
     PaymentStrategyRegistry,
     StripeStrategy,
     KlarnaStrategy,
+    PaymentReconciliationService,
   ],
 })
 export class PaymentsModule implements OnModuleInit {

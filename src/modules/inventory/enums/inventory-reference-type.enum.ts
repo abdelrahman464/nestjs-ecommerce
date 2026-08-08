@@ -13,4 +13,6 @@ export enum InventoryReferenceType {
   MANUAL_ORDER = 'manual_order',
   /** Inter-warehouse transfer pair (shared referenceId on out + in). */
   TRANSFER = 'transfer',
+  /** Admin refund — restocks the exact reservation lines sold at checkout. */
+  REFUND = 'refund',
 }

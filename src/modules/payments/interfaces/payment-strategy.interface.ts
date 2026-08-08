@@ -1,9 +1,14 @@
 import { PaymentProvider } from '../enums/payment-provider.enum';
+import { PaymentStatus } from '../enums/payment-status.enum';
 import {
   CheckoutResult,
   CreateCheckoutParams,
   NormalizedWebhookEvent,
 } from './payment-types.interface';
+
+export interface RefundResult {
+  refundReference?: string;
+}
 
 export type WebhookHeaders = Record<string, string | string[] | undefined>;
 /**
@@ -33,4 +38,17 @@ export interface IPaymentStrategy {
     rawBody: Buffer,
     headers: WebhookHeaders,
   ): Promise<NormalizedWebhookEvent> | NormalizedWebhookEvent;
+
+  /**
+   * Refund a completed payment at the provider. Optional — providers that
+   * don't support (or haven't wired up) refunds simply omit this method;
+   * PaymentsService.refund() checks for its presence before calling.
+   */
+  refund?(reference: string, amount: number): Promise<RefundResult>;
+
+  /**
+   * Actively poll the provider for a payment's current status. Optional —
+   * used by PaymentReconciliationService to catch missed/delayed webhooks.
+   */
+  getStatus?(reference: string): Promise<PaymentStatus>;
 }

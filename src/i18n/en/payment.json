@@ -13,5 +13,8 @@
   "notFound": "Payment with ID {id} not found",
   "manualProviderNotAllowed": "Use POST /orders/manual for admin orders; checkout only supports stripe/klarna",
   "checkoutIncomplete": "Payment is missing order or reservation link",
-  "notPending": "Payment is not in pending status"
+  "notPending": "Payment is not in pending status",
+  "cannotRefund": "Only paid payments can be refunded",
+  "refundNotSupported": "Refunds are not supported for this payment's provider",
+  "refundFailed": "Failed to process the refund with the payment provider"
 }
