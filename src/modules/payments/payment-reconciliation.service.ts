@@ -97,6 +97,10 @@ export class PaymentReconciliationService {
     payment: PaymentDocument,
     reservation: InventoryReservationDocument,
   ): Promise<boolean> {
+    // Manual payments (and any provider without a registered strategy) have
+    // no online status to poll — nothing to "rescue", go straight to expiry.
+    if (!this.strategyRegistry.has(payment.provider)) return false;
+
     const strategy = this.strategyRegistry.get(payment.provider);
     if (!strategy.getStatus || !payment.providerReference) return false;
 

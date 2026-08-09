@@ -2,11 +2,36 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
 import { ApiFeatures } from '../../../common/utils/api-features.utils';
+import { ContentLocale } from '../../../common/constants/supported-content-locales.constant';
 import { PaginatedResponseDto } from '../../../shared/dtos/paginated-response.dto';
+import { resolveLocalizedTitle } from '../../products/utils/product-populate.util';
 import {
   InventoryLevel,
   InventoryLevelDocument,
 } from '../schemas/inventory-level.schema';
+import { WAREHOUSE_PUBLIC_FIELDS } from '../../warehouses/constants/warehouse.constants';
+
+
+const WAREHOUSE_POPULATE = { path: 'warehouse', select: WAREHOUSE_PUBLIC_FIELDS };
+
+/**
+ * Variant/product population for the "levels by warehouse" display (FE
+ * view) — every row is already scoped to the one requested warehouse, so
+ * `variant` (sku, barcode) and `product` (title) are what differ per row.
+ */
+const VARIANT_PRODUCT_POPULATE = [
+  { path: 'variant', select: 'sku barcode' },
+  {
+    path: 'product',
+    select: 'title',
+    transform: (
+      doc: {
+        _id: Types.ObjectId;
+        title?: Partial<Record<ContentLocale, string>> | string;
+      } | null,
+    ) => doc && { _id: doc._id, title: resolveLocalizedTitle(doc) },
+  },
+];
 
 @Injectable()
 export class InventoryLevelsRepository {
@@ -26,10 +51,25 @@ export class InventoryLevelsRepository {
       .exec();
   }
 
+  /**
+   * Used only by `ReservationsService` for allocation/availability math —
+   * keep `warehouse` as a raw ObjectId. For FE display use
+   * `findByVariantForDisplay` instead.
+   */
   async findByVariant(
     variantId: Types.ObjectId | string,
   ): Promise<InventoryLevelDocument[]> {
     return this.levelModel.find({ variant: variantId }).exec();
+  }
+
+  /** FE display only — same rows as `findByVariant`, with `warehouse` populated. */
+  async findByVariantForDisplay(
+    variantId: Types.ObjectId | string,
+  ): Promise<InventoryLevelDocument[]> {
+    return this.levelModel
+      .find({ variant: variantId })
+      .populate(WAREHOUSE_POPULATE)
+      .exec();
   }
 
   /** True if any of these variants has on-hand stock in any warehouse. */
@@ -49,7 +89,9 @@ export class InventoryLevelsRepository {
     queryParams: Record<string, unknown>,
   ): Promise<PaginatedResponseDto<InventoryLevelDocument>> {
     const features = new ApiFeatures<InventoryLevelDocument>(
-      this.levelModel.find({ warehouse: warehouseId }),
+      this.levelModel
+        .find({ warehouse: warehouseId })
+        .populate(VARIANT_PRODUCT_POPULATE),
       queryParams,
       this.levelModel,
     );

@@ -50,6 +50,17 @@ export class ProductsController {
     return this.productsService.findAll(params);
   }
 
+  /**
+   * Declared BEFORE `@Get(':id')` — Nest matches same-depth routes in
+   * declaration order, so putting it later would let `:id` swallow
+   * "stock-overview" and fail the ObjectId pipe.
+   */
+  @Get('stockOverview')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  async stockOverview(@Query() queryParams: Record<string, unknown>) {
+    return this.productsService.getStockOverview(queryParams);
+  }
+
   @Public()
   @Localize(LocalizeMode.ALL)
   @Get('slug/:slug')

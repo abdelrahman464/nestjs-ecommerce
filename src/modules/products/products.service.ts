@@ -43,6 +43,11 @@ export class ProductsService {
     return this.productRepository.findAll(queryParams);
   }
 
+  /** Admin stock overview — products → variants → live stock via aggregation. */
+  async getStockOverview(queryParams: Record<string, unknown>) {
+    return this.productRepository.getStockOverview(queryParams);
+  }
+
   async findOne(id: Types.ObjectId): Promise<ProductDocument> {
     const product = await this.productRepository.findById(id);
     if (!product) {

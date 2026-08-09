@@ -1,6 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import mongoose, { HydratedDocument, Types } from 'mongoose';
-import { Order } from '../../orders/schemas/order.schema';
 import { User } from '../../users/schemas/user.schema';
 import { PaymentProvider } from '../enums/payment-provider.enum';
 import { PaymentStatus } from '../enums/payment-status.enum';
@@ -17,7 +16,7 @@ export class Payment {
 
   @Prop({
     type: mongoose.Schema.Types.ObjectId,
-    ref: Order.name,
+    ref: 'Order',
     required: true,
   })
   order: Types.ObjectId;

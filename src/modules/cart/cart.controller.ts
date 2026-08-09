@@ -46,26 +46,26 @@ export class CartController {
     return this.cartService.addItem(authUser.id, dto);
   }
 
-  @Patch('items/:productId')
+  @Patch('items/:variantId')
   async updateItem(
     @GetAuthUser() authUser: AuthenticatedUser,
-    @Param('productId', ParseObjectIdPipe) productId: Types.ObjectId,
+    @Param('variantId', ParseObjectIdPipe) variantId: Types.ObjectId,
     @Body() dto: UpdateCartItemDto,
   ): Promise<CartView> {
     return this.cartService.updateItem(
       authUser.id,
-      productId.toString(),
+      variantId.toString(),
       dto,
     );
   }
 
-  @Delete('items/:productId')
+  @Delete('items/:variantId')
   @HttpCode(HttpStatus.OK)
   async removeItem(
     @GetAuthUser() authUser: AuthenticatedUser,
-    @Param('productId', ParseObjectIdPipe) productId: Types.ObjectId,
+    @Param('variantId', ParseObjectIdPipe) variantId: Types.ObjectId,
   ): Promise<CartView> {
-    return this.cartService.removeItem(authUser.id, productId.toString());
+    return this.cartService.removeItem(authUser.id, variantId.toString());
   }
 
   @Delete()

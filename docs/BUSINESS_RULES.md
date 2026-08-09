@@ -449,8 +449,71 @@ otherwise get stuck, independent of any webhook:
    pending for hours doesn't get polled every minute.
 - Manual payments are excluded from the poll (no external session to check
   — the admin marks them paid directly); they rely on the expiry pass only.
+- The rescue check (step 1) only ever runs **once** per reservation: it's
+  only reachable via `findExpiredPending` (status `pending` **and**
+  `expiresAt` already passed), and whichever way it resolves — rescued
+  (→ `confirmed`) or actually expired (→ `expired`) — the reservation no
+  longer matches that query on the next tick. It only repeats if the
+  attempt throws (e.g. a transient network error calling the provider),
+  which is intentional: keep retrying until there's a definitive answer.
+
+  **Example** (checkout TTL 30 min, cron every minute):
+  `12:00` reservation created, `expiresAt = 12:30`. Customer is slow with
+  3D Secure and only finishes at `12:29:50`; Stripe marks the charge
+  succeeded, but the webhook is delayed. At `12:30:00` the cron finds this
+  reservation newly overdue and, before releasing stock, calls
+  `strategy.getStatus()` directly — Stripe confirms `paid`. The reservation's
+  `expiresAt` is pushed to `12:35:00` (just long enough for the confirm
+  transaction a few lines below to run without tripping its own
+  `expiresAt < now` check) and the order is fulfilled immediately. Three
+  seconds later the delayed webhook arrives and is a harmless no-op (payment
+  is already `paid`, not `pending`). Without this check, the cron would have
+  released the stock and cancelled an order that the customer had already
+  paid for.
 
 ---
+
+## 9.1 Known pitfalls (bugs already hit once — don't reintroduce them)
+
+- **`Model.create()` silently drops the session if you don't pass an array.**
+  Mongoose only recognizes the second argument as `{ session, ... }` options
+  when the first argument is an **array**, even for a single document:
+  `Model.create([{ ...data }], { session })`. Passing a bare object —
+  `Model.create({ ...data }, { session })` — makes Mongoose treat *both*
+  arguments as separate documents to insert (spread-style multi-doc create),
+  with `options` silently reset to `{}`. Two consequences if this slips in:
+  1. The real document gets saved **outside** the transaction (no session),
+     so a later `session.abortTransaction()` can't undo it — an orphan record
+     survives even though everything else in the transaction rolled back.
+  2. The bogus second "document" (built from your `{ session }` object) fails
+     schema validation on every required field, which is what actually
+     surfaces as the error.
+  Every repository in this codebase wraps the payload in an array for this
+  reason (`orders.repository.ts`, `payment.repository.ts`,
+  `product-variants.repository.ts`, etc.) — always follow that pattern.
+- **Never import a sibling schema class just to read `.name` for `ref`.**
+  `order.schema.ts` and `payment.schema.ts` used to `import { Payment }` /
+  `import { Order }` from each other purely to write `ref: Payment.name` /
+  `ref: Order.name`. That's a circular `require()`: whichever file loads
+  first hits the other mid-evaluation and gets back an incomplete module
+  (the class not yet defined), so `X.name` throws
+  `Cannot read properties of undefined (reading 'name')` — synchronously,
+  during module load, before Nest or even a `console.log` can run, which
+  makes it look like the app just hangs on boot. Always use the plain string
+  literal instead (`ref: 'Order'`, `ref: 'Payment'`), exactly like the
+  existing `ref: 'InventoryReservation'` usages — it's the model name Mongo
+  needs, not the class itself.
+- **`PaymentStrategyRegistry.get()` throws for any provider without a
+  registered strategy** (by design, for genuinely unsupported providers) —
+  but `manual` is a valid provider that simply has no online strategy to poll.
+  The reconciliation rescue check used to call `.get(payment.provider)`
+  unconditionally, so every overdue **manual** order's reservation threw
+  `payment.providerNotSupported` before it ever reached the actual expiry
+  logic — leaving it stuck `pending` forever, re-thrown every minute. Any new
+  code path that might see a manual payment must check
+  `strategyRegistry.has(provider)` first (as `tryRescueBeforeExpiry` and the
+  re-poll query now both do) instead of assuming every provider has a
+  strategy.
 
 ## 10. Transactions & concurrency — summary
 

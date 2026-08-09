@@ -53,6 +53,14 @@ export class InventoryController {
     return this.inventoryService.transfer(dto, authUser.id);
   }
 
+  @Get('movements')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  async findAllMovements(
+    @Query() queryParams: Record<string, unknown>,
+  ): Promise<PaginatedResponseDto<InventoryMovementDocument>> {
+    return this.inventoryService.findAllMovements(queryParams);
+  }
+
   @Get('movements/:id')
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   async findOne(

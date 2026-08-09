@@ -30,10 +30,9 @@ export class ReservationsRepository {
     params: CreateReservationParams,
     session?: ClientSession,
   ): Promise<InventoryReservationDocument> {
-    const [doc] = await this.reservationModel.create(
-      { ...params },
-      { session },
-    );
+    const [doc] = await this.reservationModel.create([{ ...params }], {
+      session,
+    });
     return doc;
   }
 

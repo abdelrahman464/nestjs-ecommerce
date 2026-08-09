@@ -62,6 +62,12 @@ export class InventoryService {
     return movement;
   }
 
+  async findAllMovements(
+    queryParams: Record<string, unknown>,
+  ): Promise<PaginatedResponseDto<InventoryMovementDocument>> {
+    return this.inventoryRepository.findAll(queryParams);
+  }
+
   async findByVariant(
     variantId: Types.ObjectId,
     queryParams: Record<string, unknown>,
@@ -90,7 +96,7 @@ export class InventoryService {
     totalStock: number;
   }> {
     await this.requireVariant(variantId);
-    const data = await this.levelsRepository.findByVariant(variantId);
+    const data = await this.levelsRepository.findByVariantForDisplay(variantId);
     const totalStock = data.reduce((sum, row) => sum + row.quantity, 0);
     return { data, totalStock };
   }

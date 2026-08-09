@@ -1,3 +1,5 @@
+import { I18nContext } from 'nestjs-i18n';
+
 /**
  * Locales stored for i18n content fields (e.g. product title).
  * Keep in sync with mongoose-i18n-localize `locales` on each schema plugin.
@@ -42,4 +44,21 @@ export function getLocalizedValue(
   if (value == null) return undefined;
   if (typeof value === 'string') return value;
   return value[locale];
+}
+
+/**
+ * Resolve the *current request's* language down to one of our supported
+ * content locales, falling back to the canonical default when the
+ * request's language isn't one of them (e.g. `Accept-Language: fr`).
+ *
+ * `I18nContext.current()` (no args) reads from an `AsyncLocalStorage`
+ * populated by `I18nMiddleware` for every request, so this works from
+ * anywhere in the request lifecycle — controllers, services, repositories —
+ * not just from places that receive an `ExecutionContext`/`ArgumentsHost`.
+ */
+export function resolveRequestContentLocale(): ContentLocale {
+  const lang = I18nContext.current()?.lang;
+  return (SUPPORTED_CONTENT_LOCALES as readonly string[]).includes(lang ?? '')
+    ? (lang as ContentLocale)
+    : DEFAULT_CONTENT_LOCALE;
 }
