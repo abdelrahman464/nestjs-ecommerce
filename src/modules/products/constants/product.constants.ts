@@ -5,9 +5,11 @@ export const PRODUCT_PUBLIC_FIELDS =
 
 export const PRODUCT_DEFAULT_SORT = 'order,-createdAt';
 
+/** Textable product fields for `GET /products?search=` (locale-aware). */
 export const PRODUCT_SEARCH_FIELDS = [
   ...localizedSearchPaths('title'),
   ...localizedSearchPaths('description'),
+  ...localizedSearchPaths('shortDescription'),
   'slug',
 ];
 

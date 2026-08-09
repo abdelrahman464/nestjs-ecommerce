@@ -8,6 +8,7 @@ import {
   resolveRequestContentLocale,
 } from '../../../common/constants/supported-content-locales.constant';
 import { ApiFeatures } from '../../../common/utils/api-features.utils';
+import { escapeRegex } from '../../../common/utils/escape-regex.util';
 import { flattenObject } from '../../../common/utils/flatten-object.util';
 import { generateUniqueSlug as buildUniqueSlug } from '../../../common/utils/slug.util';
 import { PaginatedResponseDto } from '../../../shared/dtos/paginated-response.dto';
@@ -21,6 +22,10 @@ import { CreateProductPersistence } from '../dto/create-product.dto';
 import { ReorderProductItemDto } from '../dto/reorder-products.dto';
 import { UpdateProductDto } from '../dto/update-product.dto';
 import { Product, ProductDocument } from '../schemas/product.schema';
+import {
+  ProductVariant,
+  ProductVariantDocument,
+} from '../schemas/product-variant.schema';
 
 const NOT_DELETED = { deletedAt: null };
 
@@ -69,6 +74,8 @@ export class ProductRepository {
   constructor(
     @InjectModel(Product.name)
     private readonly productModel: Model<ProductDocument>,
+    @InjectModel(ProductVariant.name)
+    private readonly variantModel: Model<ProductVariantDocument>,
     @InjectConnection()
     private readonly connection: Connection,
   ) {}
@@ -78,17 +85,61 @@ export class ProductRepository {
     { path: 'brand', select: BRAND_PUBLIC_FIELDS },
   ];
 
+  /**
+   * Storefront / admin product list.
+   *
+   * When `?search=` is present, matches:
+   * - product title / description / shortDescription (all locales) + slug
+   * - OR any non-deleted variant whose sku / barcode contains the keyword
+   *
+   * Variant matches still return the **product** (list shape unchanged —
+   * no variants embedded). SKU/barcode live on another collection, so we
+   * resolve matching product ids first, then OR them into the product $match.
+   */
   async findAll(
     queryParams: Record<string, any>,
   ): Promise<PaginatedResponseDto<ProductDocument>> {
-    const params = {
+    const params: Record<string, any> = {
       ...queryParams,
       sort: queryParams.sort ?? PRODUCT_DEFAULT_SORT,
     };
 
+    const keyword =
+      typeof params.search === 'string' && params.search.trim()
+        ? params.search.trim()
+        : undefined;
+
+    let baseFilter: Record<string, unknown> = { ...NOT_DELETED };
+
+    if (keyword) {
+      const regex = new RegExp(escapeRegex(keyword), 'i');
+
+      // Products whose variants match sku/barcode (distinct product ids).
+      const variantProductIds = await this.variantModel.distinct('product', {
+        ...NOT_DELETED,
+        $or: [{ sku: regex }, { barcode: regex }],
+      });
+
+      baseFilter = {
+        ...NOT_DELETED,
+        $or: [
+          ...PRODUCT_SEARCH_FIELDS.map((field) => ({
+            [field]: regex,
+          })),
+          ...(variantProductIds.length
+            ? [{ _id: { $in: variantProductIds } }]
+            : []),
+        ],
+      };
+
+      // Drop `search` so ApiFeatures.search doesn't apply a second (title-only)
+      // $or that would AND with this one and hide SKU-only hits.
+      delete params.search;
+    }
+
     const features = new ApiFeatures<ProductDocument>(
       this.productModel
-        .find({ ...NOT_DELETED })
+        .find(baseFilter)
         .populate(ProductRepository.populate),
       params,
       this.productModel,
@@ -236,9 +287,8 @@ export class ProductRepository {
         ? queryParams.search.trim()
         : undefined;
 
-    // Escape regex special chars so a search like "a+b" is treated literally.
     const searchRegex = search
-      ? new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+      ? new RegExp(escapeRegex(search), 'i')
       : undefined;
 
     // ── Early product $match object ── built dynamically so we only add

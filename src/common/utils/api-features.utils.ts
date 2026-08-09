@@ -1,5 +1,6 @@
 import { Document as MongooseDocument, Query, Model } from 'mongoose';
 import { PaginatedResponseDto } from '../../shared/dtos/paginated-response.dto';
+import { escapeRegex } from './escape-regex.util';
 
 export class ApiFeatures<TDoc extends MongooseDocument> {
   page: number;
@@ -26,9 +27,10 @@ export class ApiFeatures<TDoc extends MongooseDocument> {
   }
 
   search(fields: string[]): ApiFeatures<TDoc> {
-    const keyword = this.queryParams.search;
-    if (!keyword) return this;
+    const raw = this.queryParams.search;
+    if (typeof raw !== 'string' || !raw.trim()) return this;
 
+    const keyword = escapeRegex(raw.trim());
     this.query = this.query.find({
       $or: fields.map((field) => ({
         [field]: { $regex: keyword, $options: 'i' },

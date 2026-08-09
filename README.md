@@ -121,7 +121,7 @@ All routes below are relative to `/api/v1`. Most write endpoints require a staff
 | Area | Routes (examples) |
 |---|---|
 | Auth | `POST /auth/register`, `POST /auth/login`, `GET /auth/google`, `GET /auth/google/callback` |
-| Products | `GET/POST /products`, `GET/POST /products/:id/variants`, bulk create, reorder |
+| Products | `GET/POST /products` (`?search=` → title/desc/slug + variant sku/barcode), `GET /products/stock-overview` (admin), variants bulk/reorder |
 | Warehouses | `GET/POST/PATCH/DELETE /warehouses` |
 | Inventory | `POST /inventory/movements` (restock/return/adjustment/damage), `POST /inventory/transfers`, `GET /inventory/levels/...`, `GET /inventory/movements/...` |
 | Cart | `GET/POST/PATCH/DELETE /cart` (availability-checked) |
@@ -144,8 +144,10 @@ No test suite exists yet (`jest`/`test:e2e` scripts are present from the Nest CL
 
 ## Roadmap
 
-Done: product hardening, variants, inventory ledger, multi-warehouse, reservations/allocation, orders + payments orchestration, cart hardening, payments hardening (refunds, reconciliation sweep with backoff).
+Done: product hardening, variants, inventory ledger, multi-warehouse, reservations/allocation, orders + payments orchestration, cart hardening, payments hardening (refunds, reconciliation sweep with backoff), product search (`GET /products?search=` matches title/description/shortDescription/slug **and** variant sku/barcode; regex input is escaped).
 
-Next: pricing → coupons → search → SEO → wishlist → auth + Redis sessions → queues (emails) → audit log → analytics → observability (Pino, OpenTelemetry).
+Next: SEO → wishlist → auth + Redis sessions → queues (emails) → audit log → analytics → observability (Pino, OpenTelemetry).
+
+**Parked (safe to skip for now):** timed-sale pricing and coupons. Cart/checkout already charge via `resolveVariantUnitPrice` on flat `price` / `priceAfterDiscount`. Sale windows and coupon codes can be added later without redesigning payments or inventory — they plug into that same price helper (pricing) or adjust checkout subtotal after unit prices are resolved (coupons).
 
 **Note on the queues phase:** `PaymentReconciliationService`'s cron sweep (`@nestjs/schedule`, every minute) is safe as-is for a single instance, but it isn't guarded by a distributed lock — running two+ app instances would make each one sweep independently and duplicate work. When the queues phase lands (BullMQ + Redis, needed for emails anyway), migrate this sweep from an in-process cron to a repeatable queue job: only one worker picks up each run, retry/backoff comes for free instead of the hand-rolled `reconciliationAttempts` math, and Bull Board gives visibility into sweep history/failures. The later observability phase (Pino/OpenTelemetry) would add the metrics (reservations expired vs. rescued per day, sweep duration, provider poll latency) to actually confirm whether the sweep needs tuning at scale.
