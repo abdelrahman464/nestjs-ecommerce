@@ -1,7 +1,7 @@
 import { localizedSearchPaths } from '../../../common/constants/supported-content-locales.constant';
 
 export const PRODUCT_PUBLIC_FIELDS =
-  'title slug description shortDescription images status ratingsAverage ratingsQuantity showOnBanner order optionDefinitions groupBy category brand';
+  'title slug description shortDescription seo images status ratingsAverage ratingsQuantity showOnBanner order optionDefinitions groupBy category brand';
 
 export const PRODUCT_DEFAULT_SORT = 'order,-createdAt';
 

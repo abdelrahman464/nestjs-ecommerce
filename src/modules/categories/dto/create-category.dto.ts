@@ -10,6 +10,7 @@ import { Type } from 'class-transformer';
 import { i18nValidationMessage } from 'nestjs-i18n';
 import { Types } from 'mongoose';
 import { FieldLocalizedDto } from '../../../shared/dtos/filed-localized.dto';
+import { SeoFieldsDto } from '../../../shared/dtos/seo-fields.dto';
 
 export class CreateCategoryDto {
   @IsOptional()
@@ -39,6 +40,11 @@ export class CreateCategoryDto {
   @ValidateNested()
   @Type(() => FieldLocalizedDto)
   description: FieldLocalizedDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SeoFieldsDto)
+  seo?: SeoFieldsDto;
 
   @IsOptional()
   @IsBoolean({

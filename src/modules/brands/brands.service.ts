@@ -50,6 +50,13 @@ export class BrandsService {
     return brand;
   }
 
+  /** Active brands for the public SEO sitemap. */
+  async listSitemapEntries(): Promise<
+    Array<{ slug: string; updatedAt: Date }>
+  > {
+    return this.brandRepository.listSitemapEntries();
+  }
+
   async create(dto: CreateBrandDto): Promise<BrandDocument> {
     const canonicalTitle = getLocalizedValue(dto.title, DEFAULT_CONTENT_LOCALE)!;
     const titleExists =

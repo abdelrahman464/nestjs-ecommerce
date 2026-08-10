@@ -61,6 +61,13 @@ export class CategoriesService {
     return category;
   }
 
+  /** Active categories for the public SEO sitemap. */
+  async listSitemapEntries(): Promise<
+    Array<{ slug: string; updatedAt: Date }>
+  > {
+    return this.categoryRepository.listSitemapEntries();
+  }
+
   async create(dto: CreateCategoryDto): Promise<CategoryDocument> {
     if (dto.parentCategory) {
       await this.ensureParentCategoryExists(dto.parentCategory);

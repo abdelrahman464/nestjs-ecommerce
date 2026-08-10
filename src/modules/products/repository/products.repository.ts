@@ -21,6 +21,7 @@ import {
 import { CreateProductPersistence } from '../dto/create-product.dto';
 import { ReorderProductItemDto } from '../dto/reorder-products.dto';
 import { UpdateProductDto } from '../dto/update-product.dto';
+import { ProductStatus } from '../enums/product-status.enum';
 import { Product, ProductDocument } from '../schemas/product.schema';
 import {
   ProductVariant,
@@ -165,6 +166,19 @@ export class ProductRepository {
       .findOne({ slug, ...NOT_DELETED })
       .populate(ProductRepository.populate)
       .exec();
+  }
+
+  /** Active, non-deleted products for the public sitemap. */
+  async listSitemapEntries(): Promise<
+    Array<{ slug: string; updatedAt: Date }>
+  > {
+    const rows = await this.productModel
+      .find({ ...NOT_DELETED, status: ProductStatus.ACTIVE })
+      .select('slug updatedAt')
+      .sort({ updatedAt: -1 })
+      .lean()
+      .exec();
+    return rows as unknown as Array<{ slug: string; updatedAt: Date }>;
   }
 
   /**

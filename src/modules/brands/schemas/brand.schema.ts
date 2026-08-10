@@ -1,5 +1,9 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
+import {
+  SeoFields,
+  SeoFieldsSchema,
+} from '../../../common/schemas/seo-fields.schema';
 
 @Schema({ timestamps: true })
 export class Brand {
@@ -11,6 +15,9 @@ export class Brand {
 
   @Prop({ trim: true, i18n: true })
   description?: string;
+
+  @Prop({ type: SeoFieldsSchema, default: undefined })
+  seo?: SeoFields;
 
   @Prop({ trim: true })
   logo?: string;

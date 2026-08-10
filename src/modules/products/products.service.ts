@@ -70,6 +70,13 @@ export class ProductsService {
     return product;
   }
 
+  /** Active products for the public SEO sitemap. */
+  async listSitemapEntries(): Promise<
+    Array<{ slug: string; updatedAt: Date }>
+  > {
+    return this.productRepository.listSitemapEntries();
+  }
+
   async create(
     dto: CreateProductDto,
     createdBy: string,
@@ -103,6 +110,7 @@ export class ProductsService {
       title: dto.title,
       description: dto.description,
       shortDescription: dto.shortDescription,
+      seo: dto.seo,
       images: dto.images,
       showOnBanner: dto.showOnBanner,
       slug,

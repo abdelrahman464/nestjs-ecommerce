@@ -24,6 +24,8 @@ import { CartModule } from './modules/cart/cart.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { WarehousesModule } from './modules/warehouses/warehouses.module';
+import { SeoModule } from './modules/seo/seo.module';
+import { WishlistModule } from './modules/wishlist/wishlist.module';
 import * as path from 'path';
 import {
   AcceptLanguageResolver,
@@ -74,9 +76,11 @@ import { SUPPORTED_CONTENT_LOCALES } from './common/constants/supported-content-
     InventoryModule,
     OrdersModule,
     CartModule,
+    WishlistModule,
     ArticlesModule,
     ReviewsModule,
     PaymentsModule,
+    SeoModule,
   ],
 })
 export class AppModule {}

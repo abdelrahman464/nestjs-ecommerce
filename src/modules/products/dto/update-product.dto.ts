@@ -8,6 +8,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { FieldLocalizedPartialDto } from '../../../shared/dtos/filed-localized.dto';
+import { SeoFieldsPartialDto } from '../../../shared/dtos/seo-fields.dto';
 import {
   MAX_PRODUCT_OPTION_TYPES,
   ProductOptionType,
@@ -20,6 +21,7 @@ export class UpdateProductDto extends PartialType(
     'title',
     'description',
     'shortDescription',
+    'seo',
     'defaultVariant',
     'optionDefinitions',
     'groupBy',
@@ -39,6 +41,11 @@ export class UpdateProductDto extends PartialType(
   @ValidateNested()
   @Type(() => FieldLocalizedPartialDto)
   shortDescription?: FieldLocalizedPartialDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SeoFieldsPartialDto)
+  seo?: SeoFieldsPartialDto;
 
   @IsOptional()
   @IsArray()

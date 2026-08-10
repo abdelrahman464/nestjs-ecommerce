@@ -9,5 +9,6 @@ import { Article, ArticleSchema } from './schemas/article.schema';
   imports: [createI18nMongooseModule(Article.name, ArticleSchema)],
   controllers: [ArticlesController],
   providers: [ArticlesService, ArticleRepository],
+  exports: [ArticlesService, ArticleRepository],
 })
 export class ArticlesModule {}

@@ -1,6 +1,10 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import mongoose, { HydratedDocument, Types } from 'mongoose';
 import { localizedPath } from '../../../common/constants/supported-content-locales.constant';
+import {
+  SeoFields,
+  SeoFieldsSchema,
+} from '../../../common/schemas/seo-fields.schema';
 import { Brand } from '../../brands/schemas/brand.schema';
 import { Category } from '../../categories/schemas/category.schema';
 import { ProductOptionType } from '../enums/product-option-type.enum';
@@ -34,6 +38,9 @@ export class Product {
 
   @Prop({ trim: true, i18n: true })
   shortDescription?: string;
+
+  @Prop({ type: SeoFieldsSchema, default: undefined })
+  seo?: SeoFields;
 
   @Prop({ type: [String], default: [] })
   images: string[];

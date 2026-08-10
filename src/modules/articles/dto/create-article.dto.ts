@@ -10,6 +10,7 @@ import {
 import { Type } from 'class-transformer';
 import { i18nValidationMessage } from 'nestjs-i18n';
 import { FieldLocalizedDto } from '../../../shared/dtos/filed-localized.dto';
+import { SeoFieldsDto } from '../../../shared/dtos/seo-fields.dto';
 
 export class CreateArticleDto {
   @IsDefined({
@@ -58,16 +59,6 @@ export class CreateArticleDto {
 
   @IsOptional()
   @ValidateNested()
-  @Type(() => FieldLocalizedDto)
-  metaTitle?: FieldLocalizedDto;
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => FieldLocalizedDto)
-  metaDescription?: FieldLocalizedDto;
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => FieldLocalizedDto)
-  keywords?: FieldLocalizedDto;
+  @Type(() => SeoFieldsDto)
+  seo?: SeoFieldsDto;
 }

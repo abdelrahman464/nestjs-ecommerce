@@ -1,6 +1,10 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import mongoose, { HydratedDocument, Types } from 'mongoose';
 import { localizedPath } from '../../../common/constants/supported-content-locales.constant';
+import {
+  SeoFields,
+  SeoFieldsSchema,
+} from '../../../common/schemas/seo-fields.schema';
 
 @Schema({ timestamps: true })
 export class Category {
@@ -12,6 +16,9 @@ export class Category {
 
   @Prop({ trim: true, i18n: true })
   description?: string;
+
+  @Prop({ type: SeoFieldsSchema, default: undefined })
+  seo?: SeoFields;
 
   @Prop({ default: true })
   isActive: boolean;

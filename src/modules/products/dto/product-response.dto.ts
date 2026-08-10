@@ -21,6 +21,9 @@ export class ProductResponseDto {
   shortDescription?: unknown;
 
   @Expose()
+  seo?: unknown;
+
+  @Expose()
   images: string[];
 
   @Expose()

@@ -15,6 +15,7 @@ import { Type } from 'class-transformer';
 import { i18nValidationMessage } from 'nestjs-i18n';
 import { Types } from 'mongoose';
 import { FieldLocalizedDto } from '../../../shared/dtos/filed-localized.dto';
+import { SeoFieldsDto } from '../../../shared/dtos/seo-fields.dto';
 import {
   MAX_PRODUCT_OPTION_TYPES,
   ProductOptionType,
@@ -60,6 +61,11 @@ export class CreateProductDto {
   @Type(() => FieldLocalizedDto)
   @ValidateNested()
   shortDescription?: FieldLocalizedDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SeoFieldsDto)
+  seo?: SeoFieldsDto;
 
   @IsOptional()
   @IsArray()

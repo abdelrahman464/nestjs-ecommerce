@@ -44,6 +44,13 @@ export class ArticlesService {
     return article;
   }
 
+  /** Published articles for the public SEO sitemap. */
+  async listSitemapEntries(): Promise<
+    Array<{ slug: string; updatedAt: Date }>
+  > {
+    return this.articleRepository.listSitemapEntries();
+  }
+
   async create(
     dto: CreateArticleDto,
     authorId?: string,

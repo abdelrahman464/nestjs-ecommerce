@@ -9,6 +9,7 @@ import {
 import { Type } from 'class-transformer';
 import { i18nValidationMessage } from 'nestjs-i18n';
 import { FieldLocalizedDto } from '../../../shared/dtos/filed-localized.dto';
+import { SeoFieldsDto } from '../../../shared/dtos/seo-fields.dto';
 
 export class CreateBrandDto {
   @IsDefined({
@@ -28,6 +29,11 @@ export class CreateBrandDto {
   @ValidateNested()
   @Type(() => FieldLocalizedDto)
   description?: FieldLocalizedDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SeoFieldsDto)
+  seo?: SeoFieldsDto;
 
   @IsOptional()
   @IsString()

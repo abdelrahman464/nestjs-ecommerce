@@ -92,6 +92,19 @@ export class CategoryRepository {
       .exec();
   }
 
+  /** Active categories for the public sitemap. */
+  async listSitemapEntries(): Promise<
+    Array<{ slug: string; updatedAt: Date }>
+  > {
+    const rows = await this.categoryModel
+      .find({ isActive: true })
+      .select('slug updatedAt')
+      .sort({ updatedAt: -1 })
+      .lean()
+      .exec();
+    return rows as unknown as Array<{ slug: string; updatedAt: Date }>;
+  }
+
   async countChildrenByParentCategory(
     parentCategoryId: Types.ObjectId | string,
   ): Promise<number> {

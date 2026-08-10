@@ -1,6 +1,10 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import mongoose, { HydratedDocument, Types } from 'mongoose';
 import { localizedPath } from '../../../common/constants/supported-content-locales.constant';
+import {
+  SeoFields,
+  SeoFieldsSchema,
+} from '../../../common/schemas/seo-fields.schema';
 import { User } from '../../users/schemas/user.schema';
 
 @Schema({ timestamps: true })
@@ -32,14 +36,8 @@ export class Article {
   @Prop({ type: [String], default: [] })
   tags: string[];
 
-  @Prop({ type: String, i18n: true })
-  metaTitle?: string;
-
-  @Prop({ type: String, i18n: true })
-  metaDescription?: string;
-
-  @Prop({ type: String, i18n: true })
-  keywords?: string;
+  @Prop({ type: SeoFieldsSchema, default: undefined })
+  seo?: SeoFields;
 }
 
 export type ArticleDocument = HydratedDocument<Article>;

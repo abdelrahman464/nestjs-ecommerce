@@ -9,6 +9,6 @@ import { createI18nMongooseModule } from '../../common/utils/mongoose-i18n-schem
   imports: [createI18nMongooseModule(Category.name, CategorySchema)],
   controllers: [CategoriesController],
   providers: [CategoriesService, CategoryRepository],
-  exports: [CategoryRepository],
+  exports: [CategoriesService, CategoryRepository],
 })
 export class CategoriesModule {}

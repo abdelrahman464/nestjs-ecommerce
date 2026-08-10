@@ -44,6 +44,19 @@ export class BrandRepository {
     return this.brandModel.findOne({ slug }).exec();
   }
 
+  /** Active brands for the public sitemap. */
+  async listSitemapEntries(): Promise<
+    Array<{ slug: string; updatedAt: Date }>
+  > {
+    const rows = await this.brandModel
+      .find({ isActive: true })
+      .select('slug updatedAt')
+      .sort({ updatedAt: -1 })
+      .lean()
+      .exec();
+    return rows as unknown as Array<{ slug: string; updatedAt: Date }>;
+  }
+
   async findByDefaultLocaleTitle(
     title: string,
   ): Promise<BrandDocument | null> {

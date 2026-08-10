@@ -122,9 +122,11 @@ All routes below are relative to `/api/v1`. Most write endpoints require a staff
 |---|---|
 | Auth | `POST /auth/register`, `POST /auth/login`, `GET /auth/google`, `GET /auth/google/callback` |
 | Products | `GET/POST /products` (`?search=` → title/desc/slug + variant sku/barcode), `GET /products/stock-overview` (admin), variants bulk/reorder |
+| SEO | `GET /seo/sitemap`, `GET /seo/{products\|categories\|brands\|articles}/:slug` (public meta for FE) |
 | Warehouses | `GET/POST/PATCH/DELETE /warehouses` |
 | Inventory | `POST /inventory/movements` (restock/return/adjustment/damage), `POST /inventory/transfers`, `GET /inventory/levels/...`, `GET /inventory/movements/...` |
 | Cart | `GET/POST/PATCH/DELETE /cart` (availability-checked) |
+| Wishlist | `GET /wishlist`, `POST /wishlist/items`, `DELETE /wishlist/items/:variantId`, `POST /wishlist/items/:variantId/move-to-cart`, `DELETE /wishlist` |
 | Checkout | `POST /payments/checkout`, `POST /payments/checkout/resume`, `POST /payments/checkout/cancel` |
 | Webhooks | `POST /payments/webhook/:provider` (raw body, signature-verified) |
 | Manual orders | `POST /orders/manual` (admin), `POST /payments/:id/markPaid` (admin, with proof images/note) |
@@ -144,9 +146,9 @@ No test suite exists yet (`jest`/`test:e2e` scripts are present from the Nest CL
 
 ## Roadmap
 
-Done: product hardening, variants, inventory ledger, multi-warehouse, reservations/allocation, orders + payments orchestration, cart hardening, payments hardening (refunds, reconciliation sweep with backoff), product search (`GET /products?search=` matches title/description/shortDescription/slug **and** variant sku/barcode; regex input is escaped).
+Done: product hardening, variants, inventory ledger, multi-warehouse, reservations/allocation, orders + payments orchestration, cart hardening, payments hardening (refunds, reconciliation sweep with backoff), product search (`GET /products?search=` matches title/description/shortDescription/slug **and** variant sku/barcode; regex input is escaped), SEO (nested `seo` on product/category/brand/article; public `GET /seo/sitemap` + per-slug resolve), wishlist (per-user variant list, move-to-cart).
 
-Next: SEO → wishlist → auth + Redis sessions → queues (emails) → audit log → analytics → observability (Pino, OpenTelemetry).
+Next: auth + Redis sessions → queues (emails) → audit log → analytics → observability (Pino, OpenTelemetry).
 
 **Parked (safe to skip for now):** timed-sale pricing and coupons. Cart/checkout already charge via `resolveVariantUnitPrice` on flat `price` / `priceAfterDiscount`. Sale windows and coupon codes can be added later without redesigning payments or inventory — they plug into that same price helper (pricing) or adjust checkout subtotal after unit prices are resolved (coupons).
 

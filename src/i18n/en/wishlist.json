@@ -1,0 +1,4 @@
+{
+  "itemNotFound": "Variant {variantId} is not in the wishlist",
+  "maxItemsExceeded": "Wishlist cannot exceed {max} items"
+}

@@ -1,0 +1,4 @@
+{
+  "itemNotFound": "Variante {variantId} ist nicht auf der Wunschliste",
+  "maxItemsExceeded": "Die Wunschliste darf maximal {max} Artikel enthalten"
+}

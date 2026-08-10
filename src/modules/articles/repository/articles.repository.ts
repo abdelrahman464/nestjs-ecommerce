@@ -57,6 +57,19 @@ export class ArticleRepository {
       .exec();
   }
 
+  /** Published articles for the public sitemap. */
+  async listSitemapEntries(): Promise<
+    Array<{ slug: string; updatedAt: Date }>
+  > {
+    const rows = await this.articleModel
+      .find({ isPublished: true })
+      .select('slug updatedAt')
+      .sort({ updatedAt: -1 })
+      .lean()
+      .exec();
+    return rows as unknown as Array<{ slug: string; updatedAt: Date }>;
+  }
+
   async findByEnglishTitle(title: string): Promise<ArticleDocument | null> {
     return this.articleModel.findOne({ 'title.en': title }).exec();
   }
