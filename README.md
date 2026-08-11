@@ -10,7 +10,8 @@ All endpoints are served under the global prefix **`/api/v1`** (default port `80
 |---|---|
 | Framework | NestJS 10 (controller → service → repository) |
 | Database | MongoDB + Mongoose 8 (**replica set required** — transactions) |
-| Auth | JWT (access + refresh, cookie-based) + Google OAuth 2.0, role guard |
+| Auth | JWT access + Redis-backed refresh sessions (cookies) + Google OAuth 2.0, role guard |
+| Cache / sessions | Redis 7 (`ioredis`, `REDIS_URL`) |
 | Payments | Stripe (redirect + webhook), manual (admin proof) — refunds + reconciliation on top |
 | Scheduling | `@nestjs/schedule` — in-process cron for payment reconciliation |
 | i18n | nestjs-i18n — API messages in `en` / `de`, localized content fields |
@@ -21,7 +22,8 @@ All endpoints are served under the global prefix **`/api/v1`** (default port `80
 
 | Module | Path | Responsibility |
 |---|---|---|
-| Auth | `src/modules/auth/` | Register/login, JWT refresh, Google OAuth |
+| Auth | `src/modules/auth/` | Register/login, JWT + Redis refresh sessions, Google OAuth |
+| Redis | `src/redis/` | Shared Redis client (`REDIS_URL`); auth sessions today, queues later |
 | Users | `src/modules/users/` | Profiles, roles (customer / staff / admin) |
 | Categories / Brands | `src/modules/categories/`, `src/modules/brands/` | Catalog taxonomy |
 | Products | `src/modules/products/` | Catalog entity + **variants** (SKU, barcode, options matrix, default variant) |
@@ -146,9 +148,25 @@ No test suite exists yet (`jest`/`test:e2e` scripts are present from the Nest CL
 
 ## Roadmap
 
-Done: product hardening, variants, inventory ledger, multi-warehouse, reservations/allocation, orders + payments orchestration, cart hardening, payments hardening (refunds, reconciliation sweep with backoff), product search (`GET /products?search=` matches title/description/shortDescription/slug **and** variant sku/barcode; regex input is escaped), SEO (nested `seo` on product/category/brand/article; public `GET /seo/sitemap` + per-slug resolve), wishlist (per-user variant list, move-to-cart).
+Done: product hardening, variants, inventory ledger, multi-warehouse, reservations/allocation, orders + payments orchestration, cart hardening, payments hardening (refunds, reconciliation sweep with backoff), product search (`GET /products?search=` matches title/description/shortDescription/slug **and** variant sku/barcode; regex input is escaped), SEO (nested `seo` on product/category/brand/article; public `GET /seo/sitemap` + per-slug resolve), wishlist (per-user variant list, move-to-cart), auth + Redis refresh sessions (multi-device `sid` in Redis; logout/password revoke).
 
-Next: auth + Redis sessions → queues (emails) → audit log → analytics → observability (Pino, OpenTelemetry).
+Next: queues (emails + move payment reconciliation onto BullMQ) → audit log → analytics → observability (Pino, OpenTelemetry).
+
+### Redis (local)
+
+Refresh sessions need a running Redis. Easiest on Windows:
+
+```bash
+docker compose up -d redis
+```
+
+Set in `.env.development`:
+
+```env
+REDIS_URL=redis://127.0.0.1:6379
+```
+
+Then start the API as usual (`npm run start:dev`). App boot fails if Redis is unreachable — that is intentional so auth sessions cannot silently fall back to Mongo.
 
 **Parked (safe to skip for now):** timed-sale pricing and coupons. Cart/checkout already charge via `resolveVariantUnitPrice` on flat `price` / `priceAfterDiscount`. Sale windows and coupon codes can be added later without redesigning payments or inventory — they plug into that same price helper (pricing) or adjust checkout subtotal after unit prices are resolved (coupons).
 

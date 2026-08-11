@@ -13,6 +13,7 @@ import { TokenService } from 'src/common/tokens/token.service';
 import { CookieService } from 'src/common/cookies/cookie.service';
 import { HashService } from 'src/common/security/hash.service';
 import { CryptoService } from 'src/common/security/crypto.service';
+import { AuthSessionService } from './auth-session.service';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { CryptoService } from 'src/common/security/crypto.service';
   controllers: [AuthController],
   providers: [
     AuthService,
+    AuthSessionService,
     TokenService,
     CookieService,
     HashService,

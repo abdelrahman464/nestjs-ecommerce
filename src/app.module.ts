@@ -17,6 +17,7 @@ import googleAuthConfig from './config/google-auth.config';
 import stripeConfig from './config/stripe.config';
 import klarnaConfig from './config/klarna.config';
 import paymentConfig from './config/payment.config';
+import redisConfig from './config/redis.config';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { FilesUploadModule } from './modules/files-upload/files-upload.module';
@@ -26,6 +27,7 @@ import { OrdersModule } from './modules/orders/orders.module';
 import { WarehousesModule } from './modules/warehouses/warehouses.module';
 import { SeoModule } from './modules/seo/seo.module';
 import { WishlistModule } from './modules/wishlist/wishlist.module';
+import { RedisModule } from './redis/redis.module';
 import * as path from 'path';
 import {
   AcceptLanguageResolver,
@@ -48,10 +50,12 @@ import { SUPPORTED_CONTENT_LOCALES } from './common/constants/supported-content-
         stripeConfig,
         klarnaConfig,
         paymentConfig,
+        redisConfig,
       ],
       envFilePath: `.env.${process.env.NODE_ENV || 'development'}`,
     }),
     ScheduleModule.forRoot(),
+    RedisModule,
     I18nModule.forRoot({
       fallbackLanguage: SUPPORTED_CONTENT_LOCALES[0] ?? 'en',
       loaderOptions: {

@@ -1,12 +1,11 @@
 import { ConfigService } from '@nestjs/config';
 import { NestFactory, Reflector } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import * as cookieParser from 'cookie-parser';
-import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common';
+import { CustomExceptionFilter } from './common/filters/custom-exception.filter';
 import { WrapDataInterceptor } from './common/interceptors/wrap-data.interceptor';
 import { LocalizationInterceptor } from './common/interceptors/localization.interceptor';
-import { SerializeDtoInterceptor } from './common/interceptors/serialize-dto.interceptor';
-import { CustomExceptionFilter } from './common/filters/custom-exception.filter';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { TokenService } from './common/tokens/token.service';
 import { User } from './modules/users/schemas/user.schema';
@@ -15,7 +14,11 @@ import { RolesGuard } from './common/guards/roles.guard';
 import { I18nService, I18nValidationPipe } from 'nestjs-i18n';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
+  // So req.ip reflects the real client behind a reverse proxy / Docker.
+  app.set('trust proxy', 1);
   const i18n = app.get(I18nService);
   app.useGlobalFilters(new CustomExceptionFilter(i18n));
   app.useGlobalPipes(

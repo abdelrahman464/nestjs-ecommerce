@@ -33,6 +33,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.4",
     "cookie-parser": "^1.4.7",
+    "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.2",
     "magic-bytes.js": "^1.13.0",
     "mime-types": "^3.0.2",

@@ -44,53 +44,38 @@ export class UserRepository {
   }
 
   async findByEmailWithPassword(email: string): Promise<UserDocument> {
-    return await this.userModel
-      .findOne({ email })
-      .select('+password +currentHashedRefreshToken')
-      .exec();
+    return await this.userModel.findOne({ email }).select('+password').exec();
   }
 
   async findByGoogleId(googleId: string): Promise<UserDocument> {
     return await this.userModel.findOne({ googleId }).exec();
   }
 
-  async setRefreshToken(
+  async bumpSessionVersion(
     userId: Types.ObjectId | string,
-    hashedToken: string,
-  ): Promise<UserDocument> {
+  ): Promise<UserDocument | null> {
     return await this.userModel
-      .findByIdAndUpdate(
-        userId,
-        { currentHashedRefreshToken: hashedToken },
-        { new: true },
-      )
-      .exec();
-  }
-
-  async removeRefreshToken(userId: Types.ObjectId | string): Promise<UserDocument> {
-    return await this.userModel
-      .findByIdAndUpdate(
-        userId,
-        { $unset: { currentHashedRefreshToken: 1 } },
-        { new: true },
-      )
+      .findByIdAndUpdate(userId, { $inc: { sessionVersion: 1 } }, { new: true })
       .exec();
   }
 
   async updatePassword(
     userId: Types.ObjectId | string,
     newHashedPassword: string,
+    options?: { bumpSessionVersion?: boolean },
   ): Promise<UserDocument> {
+    const update: Record<string, unknown> = {
+      $set: {
+        password: newHashedPassword,
+        passwordChangedAt: new Date(),
+      },
+    };
+    if (options?.bumpSessionVersion) {
+      update.$inc = { sessionVersion: 1 };
+    }
+
     return await this.userModel
-      .findByIdAndUpdate(
-        userId,
-        {
-          password: newHashedPassword,
-          passwordChangedAt: new Date(),
-          $unset: { currentHashedRefreshToken: 1 },
-        },
-        { new: true },
-      )
+      .findByIdAndUpdate(userId, update, { new: true })
       .exec();
   }
 }

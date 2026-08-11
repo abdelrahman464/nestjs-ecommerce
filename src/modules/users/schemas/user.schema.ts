@@ -19,8 +19,13 @@ export class User {
   @Prop({ type: Date, required: false })
   passwordChangedAt?: Date;
 
-  @Prop({ type: String })
-  currentHashedRefreshToken?: string;
+  /**
+   * Bumped only when all sessions must die (revokeOtherSessions / password reset).
+   * Embedded in JWTs as `sv`; guard rejects mismatched tokens.
+   * passwordChangedAt is audit-only and always updated on password change.
+   */
+  @Prop({ type: Number, default: 0 })
+  sessionVersion: number;
 
   // ======== Forgot Password Fields ========
   @Prop()

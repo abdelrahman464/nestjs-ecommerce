@@ -17,6 +17,9 @@ import { TokenService } from 'src/common/tokens/token.service';
 import { CookieService } from 'src/common/cookies/cookie.service';
 import { HashService } from 'src/common/security/hash.service';
 import { CryptoService } from 'src/common/security/crypto.service';
+import { AuthSessionService } from './auth-session.service';
+import { extractClientMeta } from './utils/extract-client-meta.util';
+import type { AuthSessionView } from './types/auth-session-meta.type';
 
 @Injectable()
 export class AuthService {
@@ -28,27 +31,36 @@ export class AuthService {
     private cookieService: CookieService,
     private hashService: HashService,
     private cryptoService: CryptoService,
+    private authSessionService: AuthSessionService,
   ) {}
 
-  /** Create tokens, save refresh hash, set httpOnly cookies. */
+  /** Create tokens, store refresh session in Redis, set httpOnly cookies. */
   private async signIn(
     user: UserDocument,
+    req: Request,
     res: Response,
   ): Promise<UserDocument> {
+    const userId = user._id.toString();
     const payload = this.tokenService.createPayload(user);
-    const accessToken = this.tokenService.generateAccessToken(payload);
-    const refreshToken = this.tokenService.generateRefreshToken(payload);
-
-    await this.userRepo.setRefreshToken(
-      user._id,
-      await this.hashService.hash(refreshToken),
+    const sid = await this.authSessionService.createSession(
+      userId,
+      extractClientMeta(req),
     );
-    this.cookieService.setAuthCookies(res, accessToken, refreshToken);
+    const accessToken = this.tokenService.generateAccessToken(payload);
+    const refreshToken = this.tokenService.generateRefreshToken({
+      ...payload,
+      sid,
+    });
 
+    this.cookieService.setAuthCookies(res, accessToken, refreshToken);
     return user;
   }
 
-  async register(dto: RegisterDto, res: Response): Promise<UserDocument> {
+  async register(
+    dto: RegisterDto,
+    req: Request,
+    res: Response,
+  ): Promise<UserDocument> {
     const exists = await this.userRepo.findUserByEmail(dto.email);
     if (exists) {
       throw new I18nHttpException(HttpStatus.BAD_REQUEST, 'auth.emailInUse');
@@ -60,10 +72,14 @@ export class AuthService {
       password: await this.hashService.hash(dto.password),
     });
 
-    return this.signIn(user, res);
+    return this.signIn(user, req, res);
   }
 
-  async login(dto: LoginDto, res: Response): Promise<UserDocument> {
+  async login(
+    dto: LoginDto,
+    req: Request,
+    res: Response,
+  ): Promise<UserDocument> {
     const user = await this.userRepo.findByEmailWithPassword(dto.email);
     if (!user) {
       throw new I18nHttpException(
@@ -80,7 +96,31 @@ export class AuthService {
       );
     }
 
-    return this.signIn(user, res);
+    return this.signIn(user, req, res);
+  }
+
+  async listSessions(req: Request, userId: string): Promise<AuthSessionView[]> {
+    return this.authSessionService.listSessions(
+      userId,
+      this.readRefreshSid(req),
+    );
+  }
+
+  async revokeSessionById(
+    req: Request,
+    res: Response,
+    userId: string,
+    sid: string,
+  ): Promise<{ message: string }> {
+    await this.authSessionService.revokeSession(sid, userId);
+
+    // If the current session is the one being revoked, clear the cookies.
+    const currentSid = this.readRefreshSid(req);
+    if (currentSid && currentSid === sid) {
+      this.cookieService.clearAuthCookies(res);
+    }
+
+    return { message: 'Session revoked' };
   }
 
   async refreshTokens(req: Request, res: Response): Promise<UserDocument> {
@@ -110,19 +150,32 @@ export class AuthService {
       );
     }
 
-    this.assertPasswordNotChangedAfter(user, decoded.iat);
+    this.assertSessionVersion(user, decoded.sv);
 
-    const matches = await this.authRepo.isRefreshTokenMatching(
-      user._id.toString(),
-      refreshToken,
-    );
-    if (!matches) {
+    if (!decoded.sid) {
       throw new I18nHttpException(
         HttpStatus.FORBIDDEN,
         'auth.refreshTokenNotMatched',
       );
     }
-    return this.signIn(user, res);
+
+    const sessionActive = await this.authSessionService.isSessionActive(
+      decoded.sid,
+      user._id.toString(),
+    );
+    if (!sessionActive) {
+      throw new I18nHttpException(
+        HttpStatus.FORBIDDEN,
+        'auth.refreshTokenNotMatched',
+      );
+    }
+
+    // Rotate: drop the old Redis session, issue a new one (fresh IP/UA meta).
+    await this.authSessionService.revokeSession(
+      decoded.sid,
+      user._id.toString(),
+    );
+    return this.signIn(user, req, res);
   }
 
   async logout(req: Request, res: Response): Promise<void> {
@@ -131,7 +184,12 @@ export class AuthService {
     if (refreshToken) {
       try {
         const decoded = this.tokenService.verifyRefreshToken(refreshToken);
-        await this.userRepo.removeRefreshToken(decoded.id);
+        if (decoded.sid) {
+          await this.authSessionService.revokeSession(
+            decoded.sid,
+            decoded.id.toString(),
+          );
+        }
       } catch {
         // Always clear cookies below.
       }
@@ -140,9 +198,22 @@ export class AuthService {
     this.cookieService.clearAuthCookies(res);
   }
 
+  /**
+   * Logout every device: wipe Redis sessions, bump sessionVersion (kills access JWTs),
+   * clear this browser's cookies. User must log in again.
+   */
+  async logoutAll(userId: string, res: Response): Promise<{ message: string }> {
+    await this.authSessionService.revokeAllSessions(userId);
+    await this.userRepo.bumpSessionVersion(userId);
+    this.cookieService.clearAuthCookies(res);
+    return { message: 'Logged out from all devices' };
+  }
+
+  // *TODO: refactor this function to use a object instead of multiple parameters
   async changePassword(
     userId: Types.ObjectId | string,
     dto: ChangePasswordDto,
+    req: Request,
     res: Response,
   ): Promise<UserDocument> {
     const user = await this.userRepo.findById(userId);
@@ -161,12 +232,37 @@ export class AuthService {
       );
     }
 
+    const revokeOthers = dto.revokeOtherSessions === true;
     const updatedUser = await this.userRepo.updatePassword(
       userId,
       await this.hashService.hash(dto.newPassword),
+      // passwordChangedAt always; sessionVersion only when killing other devices.
+      { bumpSessionVersion: revokeOthers },
     );
 
-    return this.signIn(updatedUser, res);
+    const userIdStr = updatedUser._id.toString();
+    const currentSid = this.readRefreshSid(req);
+
+    if (revokeOthers) {
+      // Logout every device, then this device gets a fresh session via signIn.
+      await this.authSessionService.revokeAllSessions(userIdStr);
+    } else if (currentSid) {
+      // Only replace this device's old session; phone/laptop/tablet stay logged in.
+      await this.authSessionService.revokeSession(currentSid, userIdStr);
+    }
+
+    return this.signIn(updatedUser, req, res);
+  }
+
+  /** Best-effort read of `sid` from the refresh cookie (used on password change). */
+  private readRefreshSid(req: Request): string | undefined {
+    const refreshToken = req.cookies?.refreshToken;
+    if (!refreshToken) return undefined;
+    try {
+      return this.tokenService.verifyRefreshToken(refreshToken).sid;
+    } catch {
+      return undefined;
+    }
   }
 
   async googleLogin(
@@ -176,10 +272,11 @@ export class AuthService {
       name: string;
       picture?: string;
     },
+    req: Request,
     res: Response,
   ): Promise<UserDocument> {
     const user = await this.findOrCreateGoogleUser(googleUser);
-    return this.signIn(user, res);
+    return this.signIn(user, req, res);
   }
 
   async forgotPassword(dto: ForgotPasswordDto) {
@@ -253,6 +350,7 @@ export class AuthService {
       );
     }
 
+    await this.authSessionService.revokeAllSessions(updatedUser._id.toString());
     return updatedUser;
   }
 
@@ -282,14 +380,13 @@ export class AuthService {
     });
   }
 
-  private assertPasswordNotChangedAfter(
+  private assertSessionVersion(
     user: UserDocument,
-    tokenIssuedAt: number,
+    tokenSessionVersion?: number,
   ): void {
-    if (!user.passwordChangedAt) return;
-
-    const changedAt = Math.floor(user.passwordChangedAt.getTime() / 1000);
-    if (changedAt > tokenIssuedAt) {
+    const tokenSv = tokenSessionVersion ?? 0;
+    const userSv = user.sessionVersion ?? 0;
+    if (tokenSv !== userSv) {
       throw new I18nHttpException(
         HttpStatus.UNAUTHORIZED,
         'auth.passwordChanged',

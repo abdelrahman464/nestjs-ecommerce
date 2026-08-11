@@ -5,43 +5,64 @@ Your app stores both tokens in httpOnly cookies, which is often called:
 
 Cookie-based JWT auth or secure cookie session with JWT
 
-It is not a classic server session (no session ID in Redis). It is stateless JWT for the access token, with a stored refresh token in the database for security.
+Access tokens stay stateless (JWT only). Refresh sessions are stored in Redis so logout / password-change can revoke them immediately, and a user can have multiple devices logged in at once.
 
 
 Access token :Short (JWT_EXPIRE, e.g. 15m) - Sent on every API request to prove who you are
-Refresh token : Long (JWT_REFRESH_EXPIRE, e.g. 10d) - Used only to get a new access token when the old one expires
+Refresh token : Long (JWT_REFRESH_EXPIRE, e.g. 30d) - Used only to get a new access token when the old one expires.
+               JWT payload includes `sid` (session id). Redis key `auth:session:{sid}` must exist.
 
 
 #Login flow
 1. POST /api/v1/auth/login  { email, password }
 2. Server validates credentials
-3. Server creates access + refresh JWT
-4. Server hashes refresh token → saves in DB (user.currentHashedRefreshToken)
-5. Server sets two httpOnly cookies (accessToken, refreshToken)
-6. Response: { data: { _id, name, email, role } }  (no tokens in body)
+3. Server creates a Redis session (`sid`) + access JWT + refresh JWT (refresh carries `sid`)
+4. Server sets two httpOnly cookies (accessToken, refreshToken)
+5. Response: { data: { _id, name, email, role } }  (no tokens in body)
 *****From then on, the browser sends cookies automatically (credentials: 'include').*****
 
 #When the access token expires
 1. Client calls GET /api/v1/cart  (access token expired)
 2. Server returns 401 Unauthorized
 3. Client calls POST /api/v1/auth/refresh  (only refresh cookie needed)
-4. Server verifies refresh JWT + checks DB hash
-5. Server issues NEW access + refresh tokens (rotation)
+4. Server verifies refresh JWT + checks Redis session for `sid`
+5. Server revokes old `sid`, issues NEW access + refresh tokens (rotation)
 6. Client retries the original request
 
 
 #When refresh also fails → login again
 Refresh fails when:
     -Refresh token expired (JWT_REFRESH_EXPIRE passed)
-    -User logged out (refresh hash removed from DB)
-    -Password was changed (tokens invalidated)
+    -User logged out (Redis session deleted)
+    -Password was changed / reset (all Redis sessions revoked)
     -Cookie missing
     ***Then: redirect to login — user must enter email/password again.
+
+
+#Redis keys used by auth
+- auth:session:{sid}          → HASH { userId, ip, userAgent, device, country, createdAt }
+                               (TTL = JWT_REFRESH_EXPIRE)
+- auth:user:{userId}:sessions → Redis SET of active sids
+
+#Session version (Mongo user.sessionVersion, JWT claim `sv`)
+- Does NOT change on normal login / refresh / logout of one device
+- Bumps (+1) only when revokeOtherSessions:true or password reset
+- JWT guard rejects access tokens whose `sv` ≠ user.sessionVersion
+
+#Device list
+- GET    /auth/sessions
+- DELETE /auth/sessions/:sid
 
 
 -POST /auth/register          (Public)          Create account + set cookies
 -POST /auth/login             (Public)          Sign in + set cookies
 -POST /auth/refresh           (Public)          New tokens when access expired
--POST /auth/logout            (Public)          Clear session
--PATCH /auth/change-password  (Private)         Change password + new cookies
-******Rule for the client: always use credentials: 'include' on every request to the API.
+-POST /auth/logout            (Public)          Clear this device session
+-POST /auth/logout-all        (Private)         Revoke every Redis session + bump sessionVersion + clear cookies
+-GET  /auth/sessions          (Private)         List active devices
+-DELETE /auth/sessions/:sid   (Private)         Revoke one device
+-PATCH /auth/change-password  (Private)         Always sets passwordChangedAt (audit).
+                                               Body may include `revokeOtherSessions: true` to logout every other device
+                                               (bumps user.sessionVersion + clears Redis; JWT `sv` must match).
+                                               Default (omit / false): other devices keep Redis sessions + working tokens.
+******Rule for the client: always use credentials: 'include' on every request to the API.******

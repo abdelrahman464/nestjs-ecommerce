@@ -1,4 +1,4 @@
-import { IsNotEmpty, MinLength } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, MinLength } from 'class-validator';
 import { i18nValidationMessage } from 'nestjs-i18n';
 
 export class ChangePasswordDto {
@@ -16,4 +16,12 @@ export class ChangePasswordDto {
     }),
   })
   newPassword: string;
+
+  /**
+   * If true, logout every other device.
+   * Default false: only this device gets a new session.
+   */
+  @IsOptional()
+  @IsBoolean()
+  revokeOtherSessions?: boolean;
 }

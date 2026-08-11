@@ -9,18 +9,28 @@ import { UserDocument } from '../../modules/users/schemas/user.schema';
 export class TokenService {
   constructor(@Inject(ConfigService) private config: ConfigService) {}
 
-  createPayload(user: UserDocument): Pick<JwtPayload, 'id' | 'email'> {
-    return { id: user._id, email: user.email };
+  createPayload(
+    user: UserDocument,
+  ): Pick<JwtPayload, 'id' | 'email' | 'sv'> {
+    return {
+      id: user._id,
+      email: user.email,
+      sv: user.sessionVersion ?? 0,
+    };
   }
 
-  generateAccessToken(payload: Pick<JwtPayload, 'id' | 'email'>): string {
+  generateAccessToken(
+    payload: Pick<JwtPayload, 'id' | 'email' | 'sv'>,
+  ): string {
     return jwt.sign(payload, this.config.get<string>('jwt.secret'), {
       expiresIn: (this.config.get<string>('jwt.expire') ||
         '15m') as jwt.SignOptions['expiresIn'],
     });
   }
 
-  generateRefreshToken(payload: Pick<JwtPayload, 'id' | 'email'>): string {
+  generateRefreshToken(
+    payload: Pick<JwtPayload, 'id' | 'email' | 'sv' | 'sid'>,
+  ): string {
     return jwt.sign(payload, this.config.get<string>('jwt.refreshSecret'), {
       expiresIn: (this.config.get<string>('jwt.refreshExpire') ||
         '30d') as jwt.SignOptions['expiresIn'],

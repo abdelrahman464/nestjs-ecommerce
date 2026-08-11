@@ -3,7 +3,6 @@ import {
   CanActivate,
   ExecutionContext,
   HttpStatus,
-  Inject,
 } from '@nestjs/common';
 import { I18nHttpException } from '../filters/i18n-http.exception';
 import { Request } from 'express';
@@ -43,9 +42,7 @@ export class JwtAuthGuard implements CanActivate {
       );
     }
 
-    const currentUser = await this.userModel
-      .findById(decoded.id)
-      .select('+passwordChangedAt');
+    const currentUser = await this.userModel.findById(decoded.id);
 
     if (!currentUser) {
       throw new I18nHttpException(
@@ -54,17 +51,16 @@ export class JwtAuthGuard implements CanActivate {
       );
     }
 
-    if (currentUser.passwordChangedAt) {
-      const changedAt = Math.floor(
-        currentUser.passwordChangedAt.getTime() / 1000,
+    // passwordChangedAt is audit-only. Kill-all uses sessionVersion (`sv` in JWT).
+    const tokenSv = decoded.sv ?? 0;
+    const userSv = currentUser.sessionVersion ?? 0;
+    if (tokenSv !== userSv) {
+      throw new I18nHttpException(
+        HttpStatus.UNAUTHORIZED,
+        'auth.passwordChanged',
       );
-      if (changedAt > decoded.iat) {
-        throw new I18nHttpException(
-          HttpStatus.UNAUTHORIZED,
-          'auth.passwordChanged',
-        );
-      }
     }
+    
 
     (req as Request & { user: AuthenticatedUser }).user = {
       id: currentUser._id.toString(),
