@@ -39,8 +39,9 @@ export class UsersController {
   @HttpCode(HttpStatus.CREATED)
   async create(
     @Body() createUserDto: CreateUserDto,
+    @GetAuthUser() authUser: AuthenticatedUser,
   ): Promise<UserDocument> {
-    return this.usersService.create(createUserDto);
+    return this.usersService.create(createUserDto, authUser);
   }
 
   @Get('profile')
@@ -65,14 +66,18 @@ export class UsersController {
   async update(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() updateUserDto: UpdateUserDto,
+    @GetAuthUser() authUser: AuthenticatedUser,
   ): Promise<UserDocument> {
-    return this.usersService.update(id, updateUserDto);
+    return this.usersService.update(id, updateUserDto, authUser);
   }
 
   @Delete(':id') //validate mongoId
   @Roles(UserRole.ADMIN, UserRole.USER)
   @HttpCode(HttpStatus.OK)
-  async delete(@Param('id', ParseObjectIdPipe) id: Types.ObjectId): Promise<void> {
-    return this.usersService.delete(id);
+  async delete(
+    @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
+    @GetAuthUser() authUser: AuthenticatedUser,
+  ): Promise<void> {
+    return this.usersService.delete(id, authUser);
   }
 }

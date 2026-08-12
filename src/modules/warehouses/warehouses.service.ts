@@ -11,6 +11,11 @@ import {
   InventoryLevel,
   InventoryLevelDocument,
 } from '../inventory/schemas/inventory-level.schema';
+import type { AuthenticatedUser } from '../../common/types/authenticated-user.type';
+import { AuditLogService } from '../audit-log/audit-log.service';
+import { AuditAction } from '../audit-log/enums/audit-action.enum';
+import { AuditResourceType } from '../audit-log/enums/audit-resource-type.enum';
+import { AuditSource } from '../audit-log/enums/audit-source.enum';
 import { CreateWarehouseDto } from './dto/create-warehouse.dto';
 import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
 import { WarehousesRepository } from './repository/warehouses.repository';
@@ -20,6 +25,7 @@ import { WarehouseDocument } from './schemas/warehouse.schema';
 export class WarehousesService {
   constructor(
     private readonly warehousesRepository: WarehousesRepository,
+    private readonly auditLogService: AuditLogService,
     @InjectModel(InventoryLevel.name)
     private readonly levelModel: Model<InventoryLevelDocument>,
     @InjectConnection()
@@ -46,7 +52,10 @@ export class WarehousesService {
    * Create warehouse. First live warehouse is always default.
    * Setting isDefault clears any previous default in the same TX.
    */
-  async create(dto: CreateWarehouseDto): Promise<WarehouseDocument> {
+  async create(
+    dto: CreateWarehouseDto,
+    actor?: AuthenticatedUser,
+  ): Promise<WarehouseDocument> {
     const code = dto.code.trim().toUpperCase();
     await this.assertCodeAvailable(code);
 
@@ -72,6 +81,18 @@ export class WarehousesService {
           session,
         );
       });
+
+      await this.auditLogService.record({
+        action: AuditAction.WAREHOUSE_CREATE,
+        resourceType: AuditResourceType.WAREHOUSE,
+        resourceId: created._id,
+        actorId: actor?.id,
+        actorRole: actor?.role,
+        actorEmail: actor?.email,
+        source: AuditSource.HTTP,
+        metadata: { code: created.code, isDefault: created.isDefault },
+      });
+
       return created;
     } catch (error) {
       this.rethrowDuplicateKey(error);
@@ -84,6 +105,7 @@ export class WarehousesService {
   async update(
     id: Types.ObjectId,
     dto: UpdateWarehouseDto,
+    actor?: AuthenticatedUser,
   ): Promise<WarehouseDocument> {
     const existing = await this.findOne(id);
 
@@ -123,6 +145,18 @@ export class WarehousesService {
           id: id.toString(),
         });
       }
+
+      await this.auditLogService.record({
+        action: AuditAction.WAREHOUSE_UPDATE,
+        resourceType: AuditResourceType.WAREHOUSE,
+        resourceId: updated._id,
+        actorId: actor?.id,
+        actorRole: actor?.role,
+        actorEmail: actor?.email,
+        source: AuditSource.HTTP,
+        metadata: { fields: Object.keys(dto), code: updated.code },
+      });
+
       return updated;
     } catch (error) {
       this.rethrowDuplicateKey(error);
@@ -136,7 +170,10 @@ export class WarehousesService {
    * Soft-delete guards: not last, not default, no positive stock at this location.
    * Uses InventoryLevel model directly to avoid Warehouses ↔ Inventory circular modules.
    */
-  async remove(id: Types.ObjectId): Promise<void> {
+  async remove(
+    id: Types.ObjectId,
+    actor?: AuthenticatedUser,
+  ): Promise<void> {
     const existing = await this.findOne(id);
 
     if (existing.isDefault) {
@@ -166,6 +203,17 @@ export class WarehousesService {
     }
 
     await this.warehousesRepository.softDelete(id);
+
+    await this.auditLogService.record({
+      action: AuditAction.WAREHOUSE_DELETE,
+      resourceType: AuditResourceType.WAREHOUSE,
+      resourceId: id,
+      actorId: actor?.id,
+      actorRole: actor?.role,
+      actorEmail: actor?.email,
+      source: AuditSource.HTTP,
+      metadata: { code: existing.code },
+    });
   }
 
   /** Default warehouse for initial stock + MVP sales. */

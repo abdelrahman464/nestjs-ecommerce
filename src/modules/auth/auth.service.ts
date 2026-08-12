@@ -21,6 +21,10 @@ import { AuthSessionService } from './auth-session.service';
 import { AuthPasswordResetService } from './auth-password-reset.service';
 import { extractClientMeta } from './utils/extract-client-meta.util';
 import type { AuthSessionView } from './types/auth-session-meta.type';
+import { AuditLogService } from '../audit-log/audit-log.service';
+import { AuditAction } from '../audit-log/enums/audit-action.enum';
+import { AuditResourceType } from '../audit-log/enums/audit-resource-type.enum';
+import { AuditSource } from '../audit-log/enums/audit-source.enum';
 
 @Injectable()
 export class AuthService {
@@ -33,6 +37,7 @@ export class AuthService {
     private cryptoService: CryptoService,
     private authSessionService: AuthSessionService,
     private authPasswordResetService: AuthPasswordResetService,
+    private auditLogService: AuditLogService,
   ) {}
 
   /** Create tokens, store refresh session in Redis, set httpOnly cookies. */
@@ -121,6 +126,18 @@ export class AuthService {
       this.cookieService.clearAuthCookies(res);
     }
 
+    const meta = extractClientMeta(req);
+    await this.auditLogService.record({
+      action: AuditAction.AUTH_REVOKE_SESSION,
+      resourceType: AuditResourceType.AUTH,
+      resourceId: userId,
+      actorId: userId,
+      source: AuditSource.HTTP,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+      metadata: { sid, revokedCurrent: currentSid === sid },
+    });
+
     return { message: 'Session revoked' };
   }
 
@@ -203,10 +220,26 @@ export class AuthService {
    * Logout every device: wipe Redis sessions, bump sessionVersion (kills access JWTs),
    * clear this browser's cookies. User must log in again.
    */
-  async logoutAll(userId: string, res: Response): Promise<{ message: string }> {
+  async logoutAll(
+    userId: string,
+    req: Request,
+    res: Response,
+  ): Promise<{ message: string }> {
     await this.authSessionService.revokeAllSessions(userId);
     await this.userRepo.bumpSessionVersion(userId);
     this.cookieService.clearAuthCookies(res);
+
+    const meta = extractClientMeta(req);
+    await this.auditLogService.record({
+      action: AuditAction.AUTH_LOGOUT_ALL,
+      resourceType: AuditResourceType.AUTH,
+      resourceId: userId,
+      actorId: userId,
+      source: AuditSource.HTTP,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+      metadata: { device: meta.device, country: meta.country },
+    });
     return { message: 'Logged out from all devices' };
   }
 
@@ -251,6 +284,20 @@ export class AuthService {
       // Only replace this device's old session; phone/laptop/tablet stay logged in.
       await this.authSessionService.revokeSession(currentSid, userIdStr);
     }
+
+    const meta = extractClientMeta(req);
+    await this.auditLogService.record({
+      action: AuditAction.AUTH_CHANGE_PASSWORD,
+      resourceType: AuditResourceType.AUTH,
+      resourceId: userIdStr,
+      actorId: userIdStr,
+      actorRole: updatedUser.role,
+      actorEmail: updatedUser.email,
+      source: AuditSource.HTTP,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+      metadata: { revokeOtherSessions: revokeOthers },
+    });
 
     return this.signIn(updatedUser, req, res);
   }
@@ -347,6 +394,17 @@ export class AuthService {
 
     await this.authPasswordResetService.clear(dto.email);
     await this.authSessionService.revokeAllSessions(updatedUser._id.toString());
+
+    await this.auditLogService.record({
+      action: AuditAction.AUTH_RESET_PASSWORD,
+      resourceType: AuditResourceType.AUTH,
+      resourceId: updatedUser._id,
+      actorId: updatedUser._id,
+      actorEmail: updatedUser.email,
+      source: AuditSource.HTTP,
+      metadata: { via: 'forgot_password' },
+    });
+
     return updatedUser;
   }
 

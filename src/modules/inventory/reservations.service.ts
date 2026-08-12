@@ -12,6 +12,10 @@ import {
   ReservationSource,
   ReservationStatus,
 } from './enums/reservation.enums';
+import { AuditLogService } from '../audit-log/audit-log.service';
+import { AuditAction } from '../audit-log/enums/audit-action.enum';
+import { AuditResourceType } from '../audit-log/enums/audit-resource-type.enum';
+import { AuditSource } from '../audit-log/enums/audit-source.enum';
 import { InventoryService } from './inventory.service';
 import { InventoryLevelsRepository } from './repository/inventory-levels.repository';
 import { ReservationsRepository } from './repository/reservations.repository';
@@ -55,6 +59,7 @@ export class ReservationsService {
     private readonly levelsRepository: InventoryLevelsRepository,
     private readonly warehousesService: WarehousesService,
     private readonly inventoryService: InventoryService,
+    private readonly auditLogService: AuditLogService,
     @InjectConnection()
     private readonly connection: Connection,
   ) {}
@@ -414,7 +419,10 @@ export class ReservationsService {
     }
   }
 
-  async releaseById(id: Types.ObjectId): Promise<InventoryReservationDocument> {
+  async releaseById(
+    id: Types.ObjectId,
+    actorId?: string,
+  ): Promise<InventoryReservationDocument> {
     const reservation = await this.findById(id);
     const released = await this.releaseByOrderId(reservation.order);
     if (!released) {
@@ -424,6 +432,19 @@ export class ReservationsService {
         { id: id.toString() },
       );
     }
+
+    await this.auditLogService.record({
+      action: AuditAction.RESERVATION_RELEASE,
+      resourceType: AuditResourceType.RESERVATION,
+      resourceId: released._id,
+      actorId: actorId ?? null,
+      source: AuditSource.HTTP,
+      metadata: {
+        orderId: released.order.toString(),
+        paymentId: released.payment.toString(),
+      },
+    });
+
     return released;
   }
 

@@ -40,6 +40,10 @@ import { OrderDocument } from '../orders/schemas/order.schema';
 import { PaymentRepository } from './repository/payment.repository';
 import { PaymentDocument } from './schemas/payment.schema';
 import { PaymentStrategyRegistry } from './strategies/payment-strategy.registry';
+import { AuditLogService } from '../audit-log/audit-log.service';
+import { AuditAction } from '../audit-log/enums/audit-action.enum';
+import { AuditResourceType } from '../audit-log/enums/audit-resource-type.enum';
+import { AuditSource } from '../audit-log/enums/audit-source.enum';
 
 export interface CheckoutResponse {
   paymentId: string;
@@ -73,6 +77,7 @@ export class PaymentsService {
     private readonly userModel: Model<UserDocument>,
     @InjectConnection()
     private readonly connection: Connection,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   /**
@@ -435,6 +440,23 @@ export class PaymentsService {
       reason: dto.reason,
       refundReference,
     });
+
+    await this.auditLogService.record({
+      action: AuditAction.PAYMENT_REFUND,
+      resourceType: AuditResourceType.PAYMENT,
+      resourceId: paymentId,
+      actorId: adminId,
+      source: AuditSource.HTTP,
+      metadata: {
+        orderId: orderId.toString(),
+        provider: payment.provider,
+        amount: payment.amount,
+        currency: payment.currency,
+        reason: dto.reason,
+        refundReference,
+      },
+    });
+
     return updated!;
   }
 
@@ -465,6 +487,23 @@ export class PaymentsService {
       InventoryReferenceType.MANUAL_ORDER,
       adminId,
     );
+
+    await this.auditLogService.record({
+      action: AuditAction.PAYMENT_MARK_PAID,
+      resourceType: AuditResourceType.PAYMENT,
+      resourceId: paymentId,
+      actorId: adminId,
+      source: AuditSource.HTTP,
+      metadata: {
+        orderId: this.getOrderId(updated).toString(),
+        provider: updated.provider,
+        amount: updated.amount,
+        currency: updated.currency,
+        note: dto.note,
+        imageCount: dto.images?.length ?? 0,
+      },
+    });
+
     return (await this.paymentRepository.findPaymentById(paymentId))!;
   }
 

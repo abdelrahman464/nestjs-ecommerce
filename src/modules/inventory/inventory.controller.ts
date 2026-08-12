@@ -152,7 +152,8 @@ export class InventoryController {
   @HttpCode(HttpStatus.OK)
   async releaseReservation(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
+    @GetAuthUser() authUser: AuthenticatedUser,
   ): Promise<InventoryReservationDocument> {
-    return this.reservationsService.releaseById(id);
+    return this.reservationsService.releaseById(id, authUser.id);
   }
 }

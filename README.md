@@ -149,11 +149,13 @@ No test suite exists yet (`jest`/`test:e2e` scripts are present from the Nest CL
 
 ## Roadmap
 
-Done: product hardening, variants, inventory ledger, multi-warehouse, reservations/allocation, orders + payments orchestration, cart hardening, payments hardening (refunds, reconciliation sweep with backoff), product search (`GET /products?search=` matches title/description/shortDescription/slug **and** variant sku/barcode; regex input is escaped), SEO (nested `seo` on product/category/brand/article; public `GET /seo/sitemap` + per-slug resolve), wishlist (per-user variant list, move-to-cart), auth + Redis refresh sessions (multi-device `sid` in Redis; logout/password revoke).
+Done: product hardening, variants, inventory ledger, multi-warehouse, reservations/allocation, orders + payments orchestration, cart hardening, payments hardening (refunds, reconciliation sweep with backoff), product search (`GET /products?search=` matches title/description/shortDescription/slug **and** variant sku/barcode; regex input is escaped), SEO (nested `seo` on product/category/brand/article; public `GET /seo/sitemap` + per-slug resolve), wishlist (per-user variant list, move-to-cart), auth + Redis refresh sessions (multi-device `sid` in Redis; logout/password revoke), queues (email + payment reconciliation on BullMQ), audit log (append-only `audit_logs`; admin `GET /audit-logs`).
 
-Next: audit log → analytics → observability (Pino, OpenTelemetry).
+Next: analytics → observability (Pino, OpenTelemetry).
 
 **Queues (done):** email delivery via BullMQ + templates; payment reconciliation via BullMQ `upsertJobScheduler` every 60s (replaced `@Cron`). Redis owns the timer so multiple app instances share one sweep.
+
+**Audit log (done):** append-only Mongo collection for sensitive mutations (payments markPaid/refund, inventory movements/transfers, reservation release, auth logout-all/change/reset password/revoke session, user CRUD, warehouse CRUD, manual orders). Writes never fail the business action. Query: `GET /audit-logs` and `GET /audit-logs/:id` (ADMIN). Filter via existing query params (`action`, `resourceType`, `actor`, …).
 
 ### Redis (local)
 

@@ -10,6 +10,10 @@ import {
 } from '../products/schemas/product-variant.schema';
 import { resolveProductStatus } from '../products/utils/product-status.util';
 import { WarehousesService } from '../warehouses/warehouses.service';
+import { AuditLogService } from '../audit-log/audit-log.service';
+import { AuditAction } from '../audit-log/enums/audit-action.enum';
+import { AuditResourceType } from '../audit-log/enums/audit-resource-type.enum';
+import { AuditSource } from '../audit-log/enums/audit-source.enum';
 import { CreateInventoryMovementDto } from './dto/create-inventory-movement.dto';
 import { CreateInventoryTransferDto } from './dto/create-inventory-transfer.dto';
 import { InventoryDirection } from './enums/inventory-direction.enum';
@@ -44,6 +48,7 @@ export class InventoryService {
     private readonly inventoryRepository: InventoryRepository,
     private readonly levelsRepository: InventoryLevelsRepository,
     private readonly warehousesService: WarehousesService,
+    private readonly auditLogService: AuditLogService,
     @InjectModel(ProductVariant.name)
     private readonly variantModel: Model<ProductVariantDocument>,
     @InjectConnection()
@@ -126,7 +131,7 @@ export class InventoryService {
   ): Promise<InventoryMovementDocument> {
     const direction = this.resolveManualDirection(dto.type, dto.direction);
 
-    return this.postMovement({
+    const movement = await this.postMovement({
       variantId: dto.variantId,
       warehouseId: dto.warehouseId,
       type: dto.type,
@@ -136,6 +141,24 @@ export class InventoryService {
       reason: dto.reason,
       createdBy,
     });
+
+    await this.auditLogService.record({
+      action: AuditAction.INVENTORY_MANUAL_MOVEMENT,
+      resourceType: AuditResourceType.INVENTORY,
+      resourceId: movement._id,
+      actorId: createdBy,
+      source: AuditSource.HTTP,
+      metadata: {
+        variantId: dto.variantId,
+        warehouseId: dto.warehouseId,
+        type: dto.type,
+        quantity: dto.quantity,
+        direction,
+        reason: dto.reason,
+      },
+    });
+
+    return movement;
   }
 
   /**
@@ -160,10 +183,9 @@ export class InventoryService {
     try {
       let out!: InventoryMovementDocument;
       let inn!: InventoryMovementDocument;
+      // Shared id links the out/in pair for audit / idempotency.
+      const referenceId = new Types.ObjectId();
       await session.withTransaction(async () => {
-        // Shared id links the out/in pair for audit / idempotency.
-        const referenceId = new Types.ObjectId();
-
         out = await this.postMovement({
           variantId: dto.variantId,
           warehouseId: dto.fromWarehouseId,
@@ -192,6 +214,24 @@ export class InventoryService {
           skipWarehouseAssert: true,
         });
       });
+
+      await this.auditLogService.record({
+        action: AuditAction.INVENTORY_TRANSFER,
+        resourceType: AuditResourceType.INVENTORY,
+        resourceId: referenceId,
+        actorId: createdBy,
+        source: AuditSource.HTTP,
+        metadata: {
+          variantId: dto.variantId,
+          fromWarehouseId: dto.fromWarehouseId,
+          toWarehouseId: dto.toWarehouseId,
+          quantity: dto.quantity,
+          reason: dto.reason,
+          outMovementId: out._id.toString(),
+          inMovementId: inn._id.toString(),
+        },
+      });
+
       return { out, in: inn };
     } finally {
       await session.endSession();

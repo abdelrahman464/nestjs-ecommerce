@@ -63,9 +63,10 @@ export class AuthController {
   @Post('logoutAll')
   logoutAll(
     @GetAuthUser() authUser: AuthenticatedUser,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    return this.authService.logoutAll(authUser.id, res);
+    return this.authService.logoutAll(authUser.id, req, res);
   }
 
   /** Active devices/sessions for the current user (from Redis). */

@@ -18,6 +18,10 @@ import {
 import { ProductVariantsService } from '../products/product-variants.service';
 import { Product, ProductDocument } from '../products/schemas/product.schema';
 import { resolveVariantUnitPrice } from '../products/utils/pricing.util';
+import { AuditLogService } from '../audit-log/audit-log.service';
+import { AuditAction } from '../audit-log/enums/audit-action.enum';
+import { AuditResourceType } from '../audit-log/enums/audit-resource-type.enum';
+import { AuditSource } from '../audit-log/enums/audit-source.enum';
 import { CreateManualOrderDto } from './dto/create-manual-order.dto';
 import { OrderSource } from './enums/order.enums';
 import { OrdersService } from './orders.service';
@@ -30,6 +34,7 @@ export class OrdersFacadeService {
     private readonly reservationsService: ReservationsService,
     private readonly variantsService: ProductVariantsService,
     private readonly configService: ConfigService,
+    private readonly auditLogService: AuditLogService,
     @InjectModel(Payment.name)
     private readonly paymentModel: Model<PaymentDocument>,
     @InjectModel(Product.name)
@@ -136,6 +141,22 @@ export class OrdersFacadeService {
         paymentId = payment._id.toString();
         reservationId = reservation._id.toString();
         expiresAt = reservation.expiresAt;
+      });
+
+      await this.auditLogService.record({
+        action: AuditAction.ORDER_CREATE_MANUAL,
+        resourceType: AuditResourceType.ORDER,
+        resourceId: orderId,
+        actorId: adminId,
+        source: AuditSource.HTTP,
+        metadata: {
+          customerId: dto.customerId,
+          paymentId,
+          reservationId,
+          amount,
+          currency,
+          itemCount: built.length,
+        },
       });
 
       return { orderId, paymentId, reservationId, expiresAt, amount, currency };
