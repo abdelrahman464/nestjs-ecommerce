@@ -1,4 +1,4 @@
-
+//******************************************************************************************** */
 /** Queue name stored in Redis as bull:email:* */
 export const EMAIL_QUEUE = 'email';
 

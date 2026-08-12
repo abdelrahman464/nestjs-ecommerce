@@ -21,6 +21,7 @@ export class PaymentReconciliationScheduler implements OnModuleInit {
     private readonly reconciliationQueue: Queue,
   ) {}
 
+  //   Redis stores: "every 60s → enqueue job 'sweep'"
   async onModuleInit(): Promise<void> {
     await this.reconciliationQueue.upsertJobScheduler(
       PAYMENT_RECONCILIATION_SCHEDULER_ID,
