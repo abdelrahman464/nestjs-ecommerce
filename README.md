@@ -13,7 +13,8 @@ All endpoints are served under the global prefix **`/api/v1`** (default port `80
 | Auth             | JWT access + Redis-backed refresh sessions (cookies) + Google OAuth 2.0, role guard |
 | Cache / sessions | Redis 7 (`ioredis`, `REDIS_URL`)                                                    |
 | Payments         | Stripe (redirect + webhook), manual (admin proof) — refunds + reconciliation on top |
-| Scheduling       | `@nestjs/schedule` — in-process cron for payment reconciliation                     |
+| Scheduling       | BullMQ job scheduler — payment reconciliation every 60s                             |
+| Jobs             | BullMQ — `email` + `payment-reconciliation`                                         |
 | i18n             | nestjs-i18n — API messages in `en` / `de`, localized content fields                 |
 | Email            | Nodemailer (order/payment notifications)                                            |
 | Validation       | class-validator via `I18nValidationPipe` (whitelist + forbid unknown)               |
@@ -150,21 +151,9 @@ No test suite exists yet (`jest`/`test:e2e` scripts are present from the Nest CL
 
 Done: product hardening, variants, inventory ledger, multi-warehouse, reservations/allocation, orders + payments orchestration, cart hardening, payments hardening (refunds, reconciliation sweep with backoff), product search (`GET /products?search=` matches title/description/shortDescription/slug **and** variant sku/barcode; regex input is escaped), SEO (nested `seo` on product/category/brand/article; public `GET /seo/sitemap` + per-slug resolve), wishlist (per-user variant list, move-to-cart), auth + Redis refresh sessions (multi-device `sid` in Redis; logout/password revoke).
 
-Next: queues — **email via BullMQ first** → then payment reconciliation on BullMQ → audit log → analytics → observability (Pino, OpenTelemetry).
+Next: audit log → analytics → observability (Pino, OpenTelemetry).
 
-### Redis (local)
-
-Auth sessions / reset codes / email queue all need Redis:
-
-```bash
-docker compose up -d redis
-```
-
-```env
-REDIS_URL=redis://127.0.0.1:6379
-```
-
-**Email queue (done):** `NotificationService.sendEmail` adds a BullMQ job; `EmailProcessor` sends with nodemailer (retries 3×). Payment reconciliation still uses `@nestjs/schedule` cron for now.
+**Queues (done):** email delivery via BullMQ + templates; payment reconciliation via BullMQ `upsertJobScheduler` every 60s (replaced `@Cron`). Redis owns the timer so multiple app instances share one sweep.
 
 ### Redis (local)
 
@@ -184,4 +173,4 @@ Then start the API as usual (`npm run start:dev`). App boot fails if Redis is un
 
 **Parked (safe to skip for now):** timed-sale pricing and coupons. Cart/checkout already charge via `resolveVariantUnitPrice` on flat `price` / `priceAfterDiscount`. Sale windows and coupon codes can be added later without redesigning payments or inventory — they plug into that same price helper (pricing) or adjust checkout subtotal after unit prices are resolved (coupons).
 
-**Note on the queues phase:** `PaymentReconciliationService`'s cron sweep (`@nestjs/schedule`, every minute) is safe as-is for a single instance, but it isn't guarded by a distributed lock — running two+ app instances would make each one sweep independently and duplicate work. When the queues phase lands (BullMQ + Redis, needed for emails anyway), migrate this sweep from an in-process cron to a repeatable queue job: only one worker picks up each run, retry/backoff comes for free instead of the hand-rolled `reconciliationAttempts` math, and Bull Board gives visibility into sweep history/failures. The later observability phase (Pino/OpenTelemetry) would add the metrics (reservations expired vs. rescued per day, sweep duration, provider poll latency) to actually confirm whether the sweep needs tuning at scale.
+**Note:** Payment reconciliation runs as a BullMQ repeatable job (`every: 60_000`). Redis holds the scheduler id so multiple app instances share one timer instead of each firing `@Cron`. Inner payment backoff (`reconciliationAttempts`) is unchanged. Observability later can add sweep metrics.

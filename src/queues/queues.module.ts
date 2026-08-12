@@ -1,15 +1,18 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Global, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { EMAIL_QUEUE } from './queues.constants';
+import {
+  EMAIL_QUEUE,
+  PAYMENT_RECONCILIATION_QUEUE,
+} from './queues.constants';
 
 /**
- * Central place for BullMQ:
- * 1) Redis connection (forRoot)
- * 2) Register every queue name used in the app
+ * Only BullMQ plumbing:
+ * - Redis connection
+ * - Register queue names
  *
- * Feature modules PRODUCE/CONSUME via @InjectQueue / @Processor —
- * they do not call registerQueue themselves.
+ * Workers / schedulers / producers live in their feature modules
+ * (NotificationModule, PaymentsModule) — same pattern as email.
  */
 @Global()
 @Module({
@@ -25,7 +28,7 @@ import { EMAIL_QUEUE } from './queues.constants';
     }),
     BullModule.registerQueue(
       { name: EMAIL_QUEUE },
-      // later: { name: PAYMENT_RECONCILIATION_QUEUE },
+      { name: PAYMENT_RECONCILIATION_QUEUE },
     ),
   ],
   exports: [BullModule],

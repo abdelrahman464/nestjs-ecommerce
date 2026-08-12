@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import { ReservationStatus } from '../inventory/enums/reservation.enums';
 import { ReservationsService } from '../inventory/reservations.service';
 import { InventoryReservationDocument } from '../inventory/schemas/inventory-reservation.schema';
@@ -18,13 +17,11 @@ const BASE_DELAY_MS = 60_000; // 1 minute
 const MAX_DELAY_MS = 30 * 60_000; // 30 minutes
 
 /**
- * Catches the two ways a payment can go stale without ever getting a webhook:
- * 1) The customer abandons checkout — the reservation TTL expires.
- * 2) Stripe's webhook is delayed/lost — we actively poll the session status.
+ * Catches stale payments / expired reservations.
  *
- * Runs independently of PaymentsService.handleWebhook, but funnels any
- * status change it discovers through the same `applyStatusTransition` so
- * the two paths can never disagree.
+ * Triggered by BullMQ every minute (PaymentReconciliationScheduler),
+ * not by @nestjs/schedule @Cron anymore.
+ * Status changes still go through PaymentsService.applyStatusTransition.
  */
 @Injectable()
 export class PaymentReconciliationService {
@@ -38,7 +35,7 @@ export class PaymentReconciliationService {
     private readonly strategyRegistry: PaymentStrategyRegistry,
   ) {}
 
-  @Cron(CronExpression.EVERY_MINUTE)
+  /** Called by PaymentReconciliationProcessor for each "sweep" job. */
   async sweep(): Promise<void> {
     await this.expireStaleReservations();
     await this.reconcilePendingPayments();

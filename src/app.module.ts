@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { ScheduleModule } from '@nestjs/schedule';
 import { DatabaseModule } from './database/database.module';
 import databaseConfig from './config/database.config';
 import { AuthModule } from './modules/auth/auth.module';
@@ -55,7 +54,6 @@ import { SUPPORTED_CONTENT_LOCALES } from './common/constants/supported-content-
       ],
       envFilePath: `.env.${process.env.NODE_ENV || 'development'}`,
     }),
-    ScheduleModule.forRoot(),
     RedisModule,
     QueuesModule,
     I18nModule.forRoot({
