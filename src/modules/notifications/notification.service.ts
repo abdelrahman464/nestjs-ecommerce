@@ -1,88 +1,118 @@
-import {
-  Injectable,
-  Logger,
-  HttpStatus,
-} from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Injectable, Logger, HttpStatus } from '@nestjs/common';
+import { Queue } from 'bullmq';
 import { I18nHttpException } from '../../common/filters/i18n-http.exception';
-import { NotificationStrategyRegistry } from './strategy.registry';
-import { NotificationType } from './enums/notification.enum';
+import {
+  EMAIL_JOB_SEND,
+  EMAIL_QUEUE,
+  EmailJobPayload,
+} from '../../queues/queues.constants';
+import { NotificationChannelRegistry } from './delivery/channel.registry';
+import { NotificationChannel } from './enums/notification-channel.enum';
+import { EmailTemplateService } from './templates/email-template.service';
+import { EmailTemplateId } from './templates/email-template-id.enum';
+import { EmailTemplateVars } from './templates/email-template.types';
+import { NotifyInput } from './types/notify-input.type';
 
+/**
+ * Facade for notifying users.
+ *
+ * Emails: render template → enqueue BullMQ job → worker sends SMTP.
+ * Later: also persist in-app Notification when userId is set.
+ */
 @Injectable()
 export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
 
   constructor(
-    private readonly strategyRegistry: NotificationStrategyRegistry,
+    private readonly channelRegistry: NotificationChannelRegistry,
+    private readonly emailTemplates: EmailTemplateService,
+    @InjectQueue(EMAIL_QUEUE) private readonly emailQueue: Queue,
   ) {}
 
-  /**
-   * Send notification using the specified strategy
-   * @param type The notification type (EMAIL, SMS, etc.)
-   * @param to Recipient address/phone number
-   * @param subject Subject/title of the notification
-   * @param message Message content
-   */
-  async send(
-    type: NotificationType,
+  async notify(input: NotifyInput): Promise<void> {
+    // Future inbox:
+    // if (input.userId) { await this.notificationRepo.create(...) }
+
+    const rendered = this.emailTemplates.render(input.template, input.vars);
+    const channels = input.channels ?? [NotificationChannel.EMAIL];
+
+    for (const channel of channels) {
+      await this.dispatchChannel(
+        channel,
+        input.to,
+        rendered.subject,
+        rendered.text,
+        rendered.html,
+      );
+    }
+  }
+
+  /** Typed helper for email-only callers (auth, payments). */
+  async sendEmail(
+    to: string,
+    template: EmailTemplateId,
+    vars: EmailTemplateVars,
+  ): Promise<void> {
+    return this.notify({
+      to,
+      template,
+      vars,
+      channels: [NotificationChannel.EMAIL],
+    });
+  }
+
+  isSupported(channel: NotificationChannel): boolean {
+    return this.channelRegistry.has(channel);
+  }
+
+  getSupportedChannels(): NotificationChannel[] {
+    return Array.from(this.channelRegistry.getAll().keys());
+  }
+
+  private async dispatchChannel(
+    channel: NotificationChannel,
     to: string,
     subject: string,
-    message: string,
+    text: string,
+    html: string,
   ): Promise<void> {
-    const strategy = this.strategyRegistry.get(type);
-
-    if (!strategy) {
-      const availableStrategies = Array.from(
-        this.strategyRegistry.getAll().keys(),
-      ).join(', ');
-      this.logger.error(
-        `Strategy '${type}' not found. Available strategies: ${availableStrategies}`,
-      );
-      throw new I18nHttpException(
-        HttpStatus.BAD_REQUEST,
-        'notification.strategyUnavailable',
-        { type, available: availableStrategies },
-      );
-    }
-
-    try {
-      this.logger.log(`Sending ${type} notification to ${to}`);
-      await strategy.send(to, subject, message);
-      this.logger.log(`${type} notification sent successfully to ${to}`);
-    } catch (error) {
-      this.logger.error(
-        `Failed to send ${type} notification to ${to}: ${error.message}`,
-        error.stack,
-      );
-      throw error;
+    switch (channel) {
+      case NotificationChannel.EMAIL:
+        await this.enqueueEmail(to, subject, text, html);
+        return;
+      default: {
+        const strategy = this.channelRegistry.get(channel);
+        if (!strategy) {
+          throw new I18nHttpException(
+            HttpStatus.BAD_REQUEST,
+            'notification.strategyUnavailable',
+            {
+              type: channel,
+              available: Array.from(this.channelRegistry.getAll().keys()).join(
+                ', ',
+              ),
+            },
+          );
+        }
+        await strategy.send(to, subject, text);
+      }
     }
   }
 
-  /**
-   * Send email notification (convenience method)
-   * @param to Recipient email address
-   * @param subject Email subject
-   * @param message Email message
-   */
-  async sendEmail(to: string, subject: string, message: string): Promise<void> {
-    return this.send(NotificationType.EMAIL, to, subject, message);
-  }
-
-  /**
-   * Check if a notification type is supported
-   * @param type The notification type
-   * @returns True if supported, false otherwise
-   */
-  isSupported(type: NotificationType): boolean {
-    return this.strategyRegistry.has(type);
-  }
-
-  /**
-   * Get all supported notification types
-   * @returns Array of supported notification types
-   */
-  getSupportedTypes(): NotificationType[] {
-    return Array.from(this.strategyRegistry.getAll().keys());
+  private async enqueueEmail(
+    to: string,
+    subject: string,
+    text: string,
+    html: string,
+  ): Promise<void> {
+    const payload: EmailJobPayload = { to, subject, text, html };
+    const job = await this.emailQueue.add(EMAIL_JOB_SEND, payload, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 2000 },
+      removeOnComplete: 100,
+      removeOnFail: 50,
+    });
+    this.logger.log(`Queued email job ${job.id} → ${to}`);
   }
 }
-
-

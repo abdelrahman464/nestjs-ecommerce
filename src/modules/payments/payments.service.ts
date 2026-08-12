@@ -17,6 +17,7 @@ import { ReservationSource } from '../inventory/enums/reservation.enums';
 import { InventoryService } from '../inventory/inventory.service';
 import { ReservationsService } from '../inventory/reservations.service';
 import { NotificationService } from '../notifications/notification.service';
+import { EmailTemplateId } from '../notifications/templates/email-template-id.enum';
 import { OrderSource } from '../orders/enums/order.enums';
 import { OrdersService } from '../orders/orders.service';
 import { ProductVariantsService } from '../products/product-variants.service';
@@ -618,22 +619,20 @@ export class PaymentsService {
       )
       .join('\n');
 
-    const subject = `Order confirmation #${order._id.toString().slice(-8)}`;
-    const message = `Hi ${user.name},
-
-Thank you for your purchase!
-
-Order summary:
-${itemsList}
-
-Subtotal: ${payment.subtotal.toFixed(2)} ${payment.currency}
-Delivery: ${payment.deliveryFee.toFixed(2)} ${payment.currency}
-Total: ${payment.amount.toFixed(2)} ${payment.currency}
-
-We will process your order shortly.`;
-
     try {
-      await this.notificationService.sendEmail(user.email, subject, message);
+      await this.notificationService.sendEmail(
+        user.email,
+        EmailTemplateId.ORDER_CONFIRMATION,
+        {
+          name: user.name,
+          orderIdShort: order._id.toString().slice(-8),
+          itemsList,
+          subtotal: payment.subtotal.toFixed(2),
+          deliveryFee: payment.deliveryFee.toFixed(2),
+          total: payment.amount.toFixed(2),
+          currency: payment.currency,
+        },
+      );
     } catch (error) {
       this.logger.error(
         `Failed to send order confirmation to ${user.email}: ${error}`,

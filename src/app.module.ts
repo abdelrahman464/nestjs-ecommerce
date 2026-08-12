@@ -28,6 +28,7 @@ import { WarehousesModule } from './modules/warehouses/warehouses.module';
 import { SeoModule } from './modules/seo/seo.module';
 import { WishlistModule } from './modules/wishlist/wishlist.module';
 import { RedisModule } from './redis/redis.module';
+import { QueuesModule } from './queues/queues.module';
 import * as path from 'path';
 import {
   AcceptLanguageResolver,
@@ -56,6 +57,7 @@ import { SUPPORTED_CONTENT_LOCALES } from './common/constants/supported-content-
     }),
     ScheduleModule.forRoot(),
     RedisModule,
+    QueuesModule,
     I18nModule.forRoot({
       fallbackLanguage: SUPPORTED_CONTENT_LOCALES[0] ?? 'en',
       loaderOptions: {

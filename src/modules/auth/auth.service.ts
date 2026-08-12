@@ -2,7 +2,6 @@ import { Injectable, HttpStatus } from '@nestjs/common';
 import { I18nHttpException } from 'src/common/filters/i18n-http.exception';
 import { Request, Response } from 'express';
 import * as crypto from 'crypto';
-import { AuthRepository } from './repository/auth.repository';
 import { UserRepository } from '../users/repository/users.repository';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -11,6 +10,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { VerifyResetCodeDto } from './dto/verify-reset-code.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { NotificationService } from '../notifications/notification.service';
+import { EmailTemplateId } from '../notifications/templates/email-template-id.enum';
 import { UserDocument } from '../users/schemas/user.schema';
 import { Types } from 'mongoose';
 import { TokenService } from 'src/common/tokens/token.service';
@@ -18,13 +18,13 @@ import { CookieService } from 'src/common/cookies/cookie.service';
 import { HashService } from 'src/common/security/hash.service';
 import { CryptoService } from 'src/common/security/crypto.service';
 import { AuthSessionService } from './auth-session.service';
+import { AuthPasswordResetService } from './auth-password-reset.service';
 import { extractClientMeta } from './utils/extract-client-meta.util';
 import type { AuthSessionView } from './types/auth-session-meta.type';
 
 @Injectable()
 export class AuthService {
   constructor(
-    private authRepo: AuthRepository,
     private userRepo: UserRepository,
     private notificationService: NotificationService,
     private tokenService: TokenService,
@@ -32,6 +32,7 @@ export class AuthService {
     private hashService: HashService,
     private cryptoService: CryptoService,
     private authSessionService: AuthSessionService,
+    private authPasswordResetService: AuthPasswordResetService,
   ) {}
 
   /** Create tokens, store refresh session in Redis, set httpOnly cookies. */
@@ -290,17 +291,15 @@ export class AuthService {
     }
 
     const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
-
-    await this.userRepo.updateUser(user._id, {
-      passwordResetCode: this.cryptoService.createSha256Hash(resetCode),
-      passwordResetExpires: new Date(Date.now() + 10 * 60 * 1000),
-      passwordResetVerified: false,
-    });
+    await this.authPasswordResetService.saveCode(
+      dto.email,
+      this.cryptoService.createSha256Hash(resetCode),
+    );
 
     await this.notificationService.sendEmail(
       dto.email,
-      'Password Reset Code',
-      `Hi ${user.name},\n\nYour password reset code is: ${resetCode}\n\nThis code is valid for 10 minutes.`,
+      EmailTemplateId.PASSWORD_RESET,
+      { name: user.name, code: resetCode },
     );
 
     return { message: 'Reset code sent to email' };
@@ -308,16 +307,17 @@ export class AuthService {
 
   async verifyResetCode(dto: VerifyResetCodeDto) {
     const hashResetCode = this.cryptoService.createSha256Hash(dto.resetCode);
-    const user = await this.authRepo.findUserByResetCode(hashResetCode);
-
-    if (!user || user.email !== dto.email) {
+    const ok = await this.authPasswordResetService.verifyCode(
+      dto.email,
+      hashResetCode,
+    );
+    if (!ok) {
       throw new I18nHttpException(
         HttpStatus.BAD_REQUEST,
         'auth.invalidResetCode',
       );
     }
 
-    await this.userRepo.updateUser(user._id, { passwordResetVerified: true });
     return { message: 'Reset code verified' };
   }
 
@@ -331,25 +331,21 @@ export class AuthService {
       );
     }
 
-    if (!user.passwordResetVerified) {
+    const verified = await this.authPasswordResetService.isVerified(dto.email);
+    if (!verified) {
       throw new I18nHttpException(
         HttpStatus.BAD_REQUEST,
         'auth.resetCodeNotVerified',
       );
     }
 
-    const updatedUser = await this.authRepo.resetUserPassword(
-      dto.email,
+    const updatedUser = await this.userRepo.updatePassword(
+      user._id,
       await this.hashService.hash(dto.newPassword),
+      { bumpSessionVersion: true },
     );
 
-    if (!updatedUser) {
-      throw new I18nHttpException(
-        HttpStatus.INTERNAL_SERVER_ERROR,
-        'auth.passwordUpdateFailed',
-      );
-    }
-
+    await this.authPasswordResetService.clear(dto.email);
     await this.authSessionService.revokeAllSessions(updatedUser._id.toString());
     return updatedUser;
   }

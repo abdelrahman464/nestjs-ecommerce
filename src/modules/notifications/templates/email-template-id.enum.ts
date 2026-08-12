@@ -1,0 +1,4 @@
+export enum EmailTemplateId {
+  PASSWORD_RESET = 'PASSWORD_RESET',
+  ORDER_CONFIRMATION = 'ORDER_CONFIRMATION',
+}

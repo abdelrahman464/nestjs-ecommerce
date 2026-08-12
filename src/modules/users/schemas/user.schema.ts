@@ -27,19 +27,9 @@ export class User {
   @Prop({ type: Number, default: 0 })
   sessionVersion: number;
 
-  // ======== Forgot Password Fields ========
-  @Prop()
-  passwordResetCode?: string; // hashed 6-digit code
-
-  @Prop()
-  passwordResetExpires?: Date; // expiration time
-
-  @Prop({ default: false })
-  passwordResetVerified?: boolean; // flag if code verified
-
   // ======== Google OAuth Fields ========
   @Prop({ unique: true, sparse: true })
-  googleId?: string; // Google user ID
+  googleId?: string;
 }
 
 export type UserDocument = HydratedDocument<User>;

@@ -43,6 +43,7 @@ Refresh fails when:
 - auth:session:{sid}          → HASH { userId, ip, userAgent, device, country, createdAt }
                                (TTL = JWT_REFRESH_EXPIRE)
 - auth:user:{userId}:sessions → Redis SET of active sids
+- auth:reset:{email}          → HASH { codeHash, verified } (TTL = 10 minutes)
 
 #Session version (Mongo user.sessionVersion, JWT claim `sv`)
 - Does NOT change on normal login / refresh / logout of one device

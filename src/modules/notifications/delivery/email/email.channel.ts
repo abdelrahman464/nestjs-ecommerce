@@ -1,16 +1,22 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
-import { INotificationStrategy } from '../interfaces/notification-strategy.interface';
-import { NotificationType } from '../enums/notification.enum';
+import { NotificationChannel } from '../../enums/notification-channel.enum';
+import { INotificationChannelStrategy } from '../interfaces/notification-channel-strategy.interface';
 
+/** SMTP delivery only — called by EmailProcessor (worker), not by HTTP handlers. */
 @Injectable()
-export class EmailNotificationStrategy implements INotificationStrategy {
-  name = NotificationType.EMAIL;
+export class EmailChannelStrategy implements INotificationChannelStrategy {
+  readonly channel = NotificationChannel.EMAIL;
 
   constructor(private readonly configService: ConfigService) {}
 
-  async send(to: string, subject: string, message: string): Promise<void> {
+  async send(
+    to: string,
+    title: string,
+    body: string,
+    html?: string,
+  ): Promise<void> {
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       host: this.configService.get<string>('email.host'),
@@ -26,14 +32,11 @@ export class EmailNotificationStrategy implements INotificationStrategy {
     const senderName = this.configService.get<string>('email.senderName');
 
     await transporter.sendMail({
-      from: senderName
-        ? `${senderName} <${emailUser}>`
-        : `<${emailUser}>`,
+      from: senderName ? `${senderName} <${emailUser}>` : `<${emailUser}>`,
       to,
-      subject,
-      text: message,
+      subject: title,
+      text: body,
+      ...(html ? { html } : {}),
     });
   }
 }
-
-

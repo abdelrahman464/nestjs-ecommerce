@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
-import { AuthRepository } from './repository/auth.repository';
 import { UserRepository } from '../users/repository/users.repository';
 import { MongooseModule } from '@nestjs/mongoose';
 import { User, UserSchema } from '../users/schemas/user.schema';
@@ -14,6 +13,7 @@ import { CookieService } from 'src/common/cookies/cookie.service';
 import { HashService } from 'src/common/security/hash.service';
 import { CryptoService } from 'src/common/security/crypto.service';
 import { AuthSessionService } from './auth-session.service';
+import { AuthPasswordResetService } from './auth-password-reset.service';
 
 @Module({
   imports: [
@@ -25,11 +25,11 @@ import { AuthSessionService } from './auth-session.service';
   providers: [
     AuthService,
     AuthSessionService,
+    AuthPasswordResetService,
     TokenService,
     CookieService,
     HashService,
     CryptoService,
-    AuthRepository,
     UserRepository,
     JwtAuthGuard,
     GoogleStrategy,
