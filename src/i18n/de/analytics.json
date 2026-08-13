@@ -1,0 +1,4 @@
+{
+  "invalidDate": "Ungültiges Datum für \"{field}\"",
+  "invalidDateRange": "\"from\" muss vor oder gleich \"to\" sein"
+}

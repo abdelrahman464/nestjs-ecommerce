@@ -29,6 +29,7 @@ import { WishlistModule } from './modules/wishlist/wishlist.module';
 import { RedisModule } from './redis/redis.module';
 import { QueuesModule } from './queues/queues.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 import * as path from 'path';
 import {
   AcceptLanguageResolver,
@@ -58,6 +59,7 @@ import { SUPPORTED_CONTENT_LOCALES } from './common/constants/supported-content-
     RedisModule,
     QueuesModule,
     AuditLogModule,
+    AnalyticsModule,
     I18nModule.forRoot({
       fallbackLanguage: SUPPORTED_CONTENT_LOCALES[0] ?? 'en',
       loaderOptions: {
