@@ -1,6 +1,6 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
+import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import {
   PAYMENT_RECONCILIATION_JOB_SWEEP,
   PAYMENT_RECONCILIATION_QUEUE,
@@ -13,21 +13,21 @@ import { PaymentReconciliationService } from './payment-reconciliation.service';
  */
 @Processor(PAYMENT_RECONCILIATION_QUEUE)
 export class PaymentReconciliationProcessor extends WorkerHost {
-  private readonly logger = new Logger(PaymentReconciliationProcessor.name);
-
   constructor(
     private readonly paymentReconciliationService: PaymentReconciliationService,
+    @InjectPinoLogger(PaymentReconciliationProcessor.name)
+    private readonly logger: PinoLogger,
   ) {
     super();
   }
 
   async process(job: Job): Promise<void> {
     if (job.name !== PAYMENT_RECONCILIATION_JOB_SWEEP) {
-      this.logger.warn(`Unknown reconciliation job: ${job.name}`);
+      this.logger.warn({ jobName: job.name }, 'Unknown reconciliation job');
       return;
     }
 
-    this.logger.debug(`Reconciliation sweep (job ${job.id})`);
+    this.logger.debug({ jobId: job.id }, 'Reconciliation sweep');
     await this.paymentReconciliationService.sweep();
   }
 }

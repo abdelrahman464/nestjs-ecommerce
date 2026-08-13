@@ -1,5 +1,6 @@
-import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { I18nHttpException } from '../../../common/filters/i18n-http.exception';
 import { PaymentProvider } from '../enums/payment-provider.enum';
 import { PaymentStatus } from '../enums/payment-status.enum';
@@ -21,9 +22,12 @@ interface KlarnaCheckoutOrder {
 @Injectable()
 export class KlarnaStrategy implements IPaymentStrategy {
   readonly provider = PaymentProvider.KLARNA;
-  private readonly logger = new Logger(KlarnaStrategy.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    @InjectPinoLogger(KlarnaStrategy.name)
+    private readonly logger: PinoLogger,
+  ) {}
 
   async createCheckout(params: CreateCheckoutParams): Promise<CheckoutResult> {
     const apiUrl = this.configService.get<string>('klarna.apiUrl') ?? '';
@@ -82,7 +86,14 @@ export class KlarnaStrategy implements IPaymentStrategy {
 
     if (!response.ok) {
       const body = await response.text();
-      this.logger.error(`Klarna checkout failed: ${response.status} ${body}`);
+      this.logger.error(
+        {
+          paymentId: params.paymentId,
+          statusCode: response.status,
+          body: body.slice(0, 500),
+        },
+        'Klarna checkout failed',
+      );
       throw new I18nHttpException(
         HttpStatus.BAD_GATEWAY,
         'payment.checkoutFailed',

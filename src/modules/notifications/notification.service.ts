@@ -1,6 +1,7 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable, Logger, HttpStatus } from '@nestjs/common';
+import { Injectable, HttpStatus } from '@nestjs/common';
 import { Queue } from 'bullmq';
+import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { I18nHttpException } from '../../common/filters/i18n-http.exception';
 import {
   EMAIL_JOB_SEND,
@@ -22,12 +23,12 @@ import { NotifyInput } from './types/notify-input.type';
  */
 @Injectable()
 export class NotificationService {
-  private readonly logger = new Logger(NotificationService.name);
-
   constructor(
     private readonly channelRegistry: NotificationChannelRegistry,
     private readonly emailTemplates: EmailTemplateService,
     @InjectQueue(EMAIL_QUEUE) private readonly emailQueue: Queue,
+    @InjectPinoLogger(NotificationService.name)
+    private readonly logger: PinoLogger,
   ) {}
 
   async notify(input: NotifyInput): Promise<void> {
@@ -113,6 +114,6 @@ export class NotificationService {
       removeOnComplete: 100,
       removeOnFail: 50,
     });
-    this.logger.log(`Queued email job ${job.id} → ${to}`);
+    this.logger.info({ jobId: job.id, to }, 'Queued email job');
   }
 }

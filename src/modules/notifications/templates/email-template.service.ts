@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { EMAIL_TEMPLATES } from './email-templates';
 import { EmailTemplateId } from './email-template-id.enum';
 import {
@@ -8,12 +9,15 @@ import {
 
 @Injectable()
 export class EmailTemplateService {
-  private readonly logger = new Logger(EmailTemplateService.name);
+  constructor(
+    @InjectPinoLogger(EmailTemplateService.name)
+    private readonly logger: PinoLogger,
+  ) {}
 
   render(templateId: EmailTemplateId, vars: EmailTemplateVars): RenderedEmail {
     const template = EMAIL_TEMPLATES[templateId];
     if (!template) {
-      this.logger.error(`Unknown email template: ${templateId}`);
+      this.logger.error({ templateId }, 'Unknown email template');
       throw new Error(`Unknown email template: ${templateId}`);
     }
 

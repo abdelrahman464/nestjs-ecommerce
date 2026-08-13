@@ -151,7 +151,7 @@ No test suite exists yet (`jest`/`test:e2e` scripts are present from the Nest CL
 
 Done: product hardening, variants, inventory ledger, multi-warehouse, reservations/allocation, orders + payments orchestration, cart hardening, payments hardening (refunds, reconciliation sweep with backoff), product search (`GET /products?search=` matches title/description/shortDescription/slug **and** variant sku/barcode; regex input is escaped), SEO (nested `seo` on product/category/brand/article; public `GET /seo/sitemap` + per-slug resolve), wishlist (per-user variant list, move-to-cart), auth + Redis refresh sessions (multi-device `sid` in Redis; logout/password revoke), queues (email + payment reconciliation on BullMQ), audit log (append-only `audit_logs`; admin `GET /auditLogs`), analytics (admin KPIs over orders/payments/stock).
 
-Next: observability (Pino, OpenTelemetry).
+Next: observability — OpenTelemetry (traces/metrics). **Pino (done):** structured HTTP + Nest logs via `nestjs-pino`; set `LOG_LEVEL` in `.env.*` (dev pretty / prod JSON). Response header `x-request-id` correlates one request’s log lines.
 
 **Queues (done):** email delivery via BullMQ + templates; payment reconciliation via BullMQ `upsertJobScheduler` every 60s (replaced `@Cron`). Redis owns the timer so multiple app instances share one sweep.
 

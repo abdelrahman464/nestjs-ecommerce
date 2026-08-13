@@ -1,6 +1,7 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Queue } from 'bullmq';
+import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import {
   PAYMENT_RECONCILIATION_EVERY_MS,
   PAYMENT_RECONCILIATION_JOB_SWEEP,
@@ -14,14 +15,13 @@ import {
  */
 @Injectable()
 export class PaymentReconciliationScheduler implements OnModuleInit {
-  private readonly logger = new Logger(PaymentReconciliationScheduler.name);
-
   constructor(
     @InjectQueue(PAYMENT_RECONCILIATION_QUEUE)
     private readonly reconciliationQueue: Queue,
+    @InjectPinoLogger(PaymentReconciliationScheduler.name)
+    private readonly logger: PinoLogger,
   ) {}
 
-  //   Redis stores: "every 60s → enqueue job 'sweep'"
   async onModuleInit(): Promise<void> {
     await this.reconciliationQueue.upsertJobScheduler(
       PAYMENT_RECONCILIATION_SCHEDULER_ID,
@@ -36,8 +36,9 @@ export class PaymentReconciliationScheduler implements OnModuleInit {
       },
     );
 
-    this.logger.log(
-      `Payment reconciliation scheduled every ${PAYMENT_RECONCILIATION_EVERY_MS / 1000}s (BullMQ)`,
+    this.logger.info(
+      { everyMs: PAYMENT_RECONCILIATION_EVERY_MS },
+      'Payment reconciliation scheduler registered',
     );
   }
 }

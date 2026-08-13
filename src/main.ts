@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { NestFactory, Reflector } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import * as cookieParser from 'cookie-parser';
 import { CustomExceptionFilter } from './common/filters/custom-exception.filter';
@@ -16,7 +17,11 @@ import { I18nService, I18nValidationPipe } from 'nestjs-i18n';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
+    // Hold Nest bootstrap logs until Pino is ready (avoids mixed console formats).
+    bufferLogs: true,
   });
+  // Route Nest Logger + HTTP access logs through Pino.
+  app.useLogger(app.get(Logger));
   // So req.ip reflects the real client behind a reverse proxy / Docker.
   app.set('trust proxy', 1);
   const i18n = app.get(I18nService);
@@ -55,5 +60,6 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1');
   const port = configService.get<string>('app.port') ?? 8000;
   await app.listen(port);
+  app.get(Logger).log(`API listening on http://localhost:${port}/api/v1`);
 }
 bootstrap();

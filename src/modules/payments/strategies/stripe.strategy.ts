@@ -1,5 +1,6 @@
-import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import Stripe = require('stripe');
 import { I18nHttpException } from '../../../common/filters/i18n-http.exception';
 import { PaymentProvider } from '../enums/payment-provider.enum';
@@ -18,11 +19,14 @@ import {
 @Injectable()
 export class StripeStrategy implements IPaymentStrategy {
   readonly provider = PaymentProvider.STRIPE;
-  private readonly logger = new Logger(StripeStrategy.name);
   private readonly stripe: Stripe;
   private readonly webhookSecret: string;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    @InjectPinoLogger(StripeStrategy.name)
+    private readonly logger: PinoLogger,
+  ) {
     const secretKey = this.configService.get<string>('stripe.secretKey');
     this.webhookSecret =
       this.configService.get<string>('stripe.webhookSecret') ?? '';
@@ -116,7 +120,10 @@ export class StripeStrategy implements IPaymentStrategy {
         this.webhookSecret,
       );
     } catch (err) {
-      this.logger.warn(`Stripe webhook signature verification failed: ${err}`);
+      this.logger.warn(
+        { err: err instanceof Error ? err.message : String(err) },
+        'Stripe webhook signature verification failed',
+      );
       throw new I18nHttpException(
         HttpStatus.BAD_REQUEST,
         'payment.invalidWebhook',
@@ -149,7 +156,8 @@ export class StripeStrategy implements IPaymentStrategy {
 
     if (!paymentIntentId) {
       this.logger.error(
-        `Cannot refund session ${reference}: no payment_intent`,
+        { reference },
+        'Cannot refund Stripe session — no payment_intent',
       );
       throw new I18nHttpException(HttpStatus.BAD_GATEWAY, 'payment.refundFailed');
     }
@@ -161,7 +169,14 @@ export class StripeStrategy implements IPaymentStrategy {
       });
       return { refundReference: refund.id };
     } catch (error) {
-      this.logger.error(`Stripe refund failed for ${reference}: ${error}`);
+      this.logger.error(
+        {
+          reference,
+          paymentIntentId,
+          err: error instanceof Error ? error.message : String(error),
+        },
+        'Stripe refund failed',
+      );
       throw new I18nHttpException(HttpStatus.BAD_GATEWAY, 'payment.refundFailed');
     }
   }

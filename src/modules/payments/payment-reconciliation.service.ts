@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { ReservationStatus } from '../inventory/enums/reservation.enums';
 import { ReservationsService } from '../inventory/reservations.service';
 import { InventoryReservationDocument } from '../inventory/schemas/inventory-reservation.schema';
@@ -25,14 +26,14 @@ const MAX_DELAY_MS = 30 * 60_000; // 30 minutes
  */
 @Injectable()
 export class PaymentReconciliationService {
-  private readonly logger = new Logger(PaymentReconciliationService.name);
-
   constructor(
     private readonly paymentRepository: PaymentRepository,
     private readonly reservationsService: ReservationsService,
     private readonly ordersService: OrdersService,
     private readonly paymentsService: PaymentsService,
     private readonly strategyRegistry: PaymentStrategyRegistry,
+    @InjectPinoLogger(PaymentReconciliationService.name)
+    private readonly logger: PinoLogger,
   ) {}
 
   /** Called by PaymentReconciliationProcessor for each "sweep" job. */
@@ -77,7 +78,12 @@ export class PaymentReconciliationService {
         );
       } catch (error) {
         this.logger.error(
-          `Failed to expire reservation ${reservation._id.toString()}: ${error}`,
+          {
+            reservationId: reservation._id.toString(),
+            paymentId: reservation.payment?.toString(),
+            err: error instanceof Error ? error.message : String(error),
+          },
+          'Failed to expire reservation',
         );
       }
     }
@@ -105,8 +111,12 @@ export class PaymentReconciliationService {
     if (status !== PaymentStatus.PAID) return false;
 
     this.logger.warn(
-      `Payment ${payment._id.toString()} confirmed PAID at the provider right as its ` +
-        `reservation expired — rescuing instead of releasing stock`,
+      {
+        paymentId: payment._id.toString(),
+        reservationId: reservation._id.toString(),
+        provider: payment.provider,
+      },
+      'Rescuing PAID payment at reservation expiry',
     );
 
     // Stock is still held (we haven't released it yet) — just push the
@@ -149,7 +159,12 @@ export class PaymentReconciliationService {
         await this.paymentsService.applyStatusTransition(payment, status);
       } catch (error) {
         this.logger.error(
-          `Failed to reconcile payment ${payment._id.toString()}: ${error}`,
+          {
+            paymentId: payment._id.toString(),
+            provider: payment.provider,
+            err: error instanceof Error ? error.message : String(error),
+          },
+          'Failed to reconcile payment',
         );
       }
     }

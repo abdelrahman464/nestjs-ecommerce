@@ -1,6 +1,6 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
+import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import {
   EMAIL_JOB_SEND,
   EMAIL_QUEUE,
@@ -10,21 +10,46 @@ import { EmailChannelStrategy } from './email.channel';
 
 @Processor(EMAIL_QUEUE)
 export class EmailProcessor extends WorkerHost {
-  private readonly logger = new Logger(EmailProcessor.name);
-
-  constructor(private readonly emailChannel: EmailChannelStrategy) {
+  constructor(
+    private readonly emailChannel: EmailChannelStrategy,
+    /** Pino logger — supports structured fields: logger.info({ jobId }, 'msg') */
+    @InjectPinoLogger(EmailProcessor.name)
+    private readonly logger: PinoLogger,
+  ) {
     super();
   }
 
   async process(job: Job<EmailJobPayload>): Promise<void> {
     if (job.name !== EMAIL_JOB_SEND) {
-      this.logger.warn(`Unknown email job: ${job.name}`);
+      this.logger.warn({ jobName: job.name }, 'Unknown email job');
       return;
     }
 
     const { to, subject, text, html } = job.data;
-    this.logger.log(`Sending email job ${job.id} → ${to}`);
-    await this.emailChannel.send(to, subject, text, html);
-    this.logger.log(`Email job ${job.id} done`);
+    this.logger.info(
+      {
+        jobId: job.id,
+        attempt: job.attemptsMade + 1,
+        maxAttempts: job.opts.attempts ?? 1,
+        to,
+      },
+      'Sending email job',
+    );
+
+    try {
+      await this.emailChannel.send(to, subject, text, html);
+      this.logger.info({ jobId: job.id, to }, 'Email job done');
+    } catch (error) {
+      this.logger.error(
+        {
+          jobId: job.id,
+          attempt: job.attemptsMade + 1,
+          to,
+          err: error instanceof Error ? error.message : String(error),
+        },
+        'Email job failed',
+      );
+      throw error; // rethrow so BullMQ can retry
+    }
   }
 }

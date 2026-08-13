@@ -1,7 +1,8 @@
-import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { Connection, Model, Types } from 'mongoose';
+import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import {
   DEFAULT_CONTENT_LOCALE,
   getLocalizedValue,
@@ -59,8 +60,6 @@ export interface CheckoutResponse {
 
 @Injectable()
 export class PaymentsService {
-  private readonly logger = new Logger(PaymentsService.name);
-
   constructor(
     private readonly paymentRepository: PaymentRepository,
     private readonly strategyRegistry: PaymentStrategyRegistry,
@@ -78,6 +77,8 @@ export class PaymentsService {
     @InjectConnection()
     private readonly connection: Connection,
     private readonly auditLogService: AuditLogService,
+    @InjectPinoLogger(PaymentsService.name)
+    private readonly logger: PinoLogger,
   ) {}
 
   /**
@@ -315,7 +316,8 @@ export class PaymentsService {
 
     if (!payment) {
       this.logger.warn(
-        `Webhook for ${provider} did not match any payment (ref=${event.reference})`,
+        { provider, reference: event.reference, paymentId: event.paymentId },
+        'Webhook did not match any payment',
       );
       return;
     }
@@ -346,9 +348,12 @@ export class PaymentsService {
       // (fulfill if stock allows, refund otherwise).
       if (status === PaymentStatus.PAID) {
         this.logger.error(
-          `Payment ${payment._id.toString()} (${payment.provider}) reported PAID but is already ` +
-            `'${payment.status}' locally — likely captured right as its reservation expired. ` +
-            `Needs manual review (fulfill if stock allows, refund otherwise).`,
+          {
+            paymentId: payment._id.toString(),
+            provider: payment.provider,
+            localStatus: payment.status,
+          },
+          'Provider reported PAID but payment is no longer pending — needs manual review',
         );
       }
       return;
@@ -641,8 +646,13 @@ export class PaymentsService {
     await this.cartService.clearCart(payment.user.toString());
     await this.sendOrderConfirmation(payment);
 
-    this.logger.log(
-      `Payment ${payment._id.toString()} PAID — order ${orderId} fulfilled`,
+    this.logger.info(
+      {
+        paymentId: payment._id.toString(),
+        orderId,
+        provider: payment.provider,
+      },
+      'Payment PAID — order fulfilled',
     );
   }
 
@@ -674,7 +684,12 @@ export class PaymentsService {
       );
     } catch (error) {
       this.logger.error(
-        `Failed to send order confirmation to ${user.email}: ${error}`,
+        {
+          paymentId: payment._id.toString(),
+          email: user.email,
+          err: error instanceof Error ? error.message : String(error),
+        },
+        'Failed to send order confirmation email',
       );
     }
   }
