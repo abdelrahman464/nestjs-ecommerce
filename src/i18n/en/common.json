@@ -1,5 +1,8 @@
 {
   "forbidden": "You do not have permission to access this resource",
   "invalidId": "Invalid ID format",
-  "invalidToken": "Invalid token"
+  "invalidToken": "Invalid token",
+  "duplicateKey": "A record with this {field} already exists",
+  "validationFailed": "Validation failed: {details}",
+  "internalError": "Something went wrong. Please try again later."
 }

@@ -287,9 +287,19 @@ export class ProductsService {
         'product.slugAlreadyExists',
       );
     }
-    if (field.includes('sku') || field.includes('barcode')) {
-      // bubbled from default variant create inside transaction
-      throw error;
+    if (field.includes('sku')) {
+      throw new I18nHttpException(
+        HttpStatus.CONFLICT,
+        'product.skuAlreadyExists',
+        { sku: '' },
+      );
+    }
+    if (field.includes('barcode')) {
+      throw new I18nHttpException(
+        HttpStatus.CONFLICT,
+        'product.barcodeAlreadyExists',
+        { barcode: '' },
+      );
     }
     throw new I18nHttpException(
       HttpStatus.CONFLICT,

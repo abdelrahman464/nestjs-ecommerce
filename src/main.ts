@@ -4,6 +4,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import * as cookieParser from 'cookie-parser';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { CustomExceptionFilter } from './common/filters/custom-exception.filter';
 import { WrapDataInterceptor } from './common/interceptors/wrap-data.interceptor';
 import { LocalizationInterceptor } from './common/interceptors/localization.interceptor';
@@ -25,7 +26,12 @@ async function bootstrap() {
   // So req.ip reflects the real client behind a reverse proxy / Docker.
   app.set('trust proxy', 1);
   const i18n = app.get(I18nService);
-  app.useGlobalFilters(new CustomExceptionFilter(i18n));
+  // Order matters: Nest picks the first matching filter. HttpException filter
+  // must come before the @Catch() catch-all.
+  app.useGlobalFilters(
+    new CustomExceptionFilter(i18n),
+    new AllExceptionsFilter(i18n),
+  );
   app.useGlobalPipes(
     new I18nValidationPipe({
       whitelist: true, // ignore unknown fields
