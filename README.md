@@ -73,14 +73,8 @@ Key invariants (full list in [docs/BUSINESS_RULES.md](docs/BUSINESS_RULES.md)):
 
 ### Prerequisites
 
-- Node.js 20+
-- MongoDB running as a **replica set** (transactions are used throughout — a standalone `mongod` will fail). For local dev a single-node replica set is enough:
-
-```bash
-mongod --replSet rs0 --dbpath <your-db-path>
-# once, in mongosh:
-rs.initiate()
-```
+- Node.js 22+ (`nestjs-i18n` requires it; Docker image is `node:22-bookworm-slim`)
+- MongoDB **Atlas** (replica set is already on). Transactions need a replica set — Atlas provides that. Put the connection string in `MONGO_URI`. In Atlas → Network Access, allow your IP (or `0.0.0.0/0` for local Docker).
 
 ### Install & configure
 
@@ -93,7 +87,7 @@ Environment files are loaded per `NODE_ENV`: `.env.development` / `.env.producti
 
 | Variable                                                                        | Purpose                                                   |
 | ------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `MONGO_URI`                                                                     | e.g. `mongodb://localhost:27017/ecommerce?replicaSet=rs0` |
+| `MONGO_URI`                                                                     | Atlas connection string (`mongodb+srv://...`)             |
 | `PORT`                                                                          | API port (default `8000`)                                 |
 | `JWT_SECRET`, `JWT_EXPIRE`, `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRE`          | Token config                                              |
 | `COOKIE_SECURE`                                                                 | `true` in production (HTTPS)                              |
@@ -120,6 +114,27 @@ Environment files are loaded per `NODE_ENV`: `.env.development` / `.env.producti
 ```bash
 npm run start:dev    # watch mode (NODE_ENV=development)
 npm run start:prod   # compiled (NODE_ENV=production, run npm run build first)
+```
+
+### Docker
+
+Compile TypeScript **on the host** (that install already works). Docker only runs `npm ci --omit=dev` so it never downloads Nest CLI/webpack packages that Docker Desktop was corrupting.
+
+```bash
+npm run docker:up
+# same as: npm run build && docker compose up --build -d
+```
+
+Needs `.env` (Compose `env_file`) with Atlas `MONGO_URI`, JWT, Cloudinary, etc.
+
+- API: `http://localhost:8000/api/v1`
+- Redis: published on `6379`
+
+Allow this machine’s IP in Atlas Network Access.
+
+```bash
+docker compose down          # stop
+docker compose down -v       # stop and wipe the Redis volume
 ```
 
 ## API overview

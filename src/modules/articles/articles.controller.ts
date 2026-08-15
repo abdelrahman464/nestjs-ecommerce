@@ -11,12 +11,12 @@ import {
   Query,
 } from '@nestjs/common';
 import { Types } from 'mongoose';
-import { GetAuthUser } from 'src/common/decorators/get-auth-user.decorator';
-import { Localize } from 'src/common/decorators/localize.decorator';
-import { Public } from 'src/common/decorators/public.decorator';
-import { Roles } from 'src/common/decorators/roles.decorator';
-import type { AuthenticatedUser } from 'src/common/types/authenticated-user.type';
-import { LocalizeMode } from 'src/common/enums/localize-mode.enum';
+import { GetAuthUser } from '../../common/decorators/get-auth-user.decorator';
+import { Localize } from '../../common/decorators/localize.decorator';
+import { Public } from '../../common/decorators/public.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import type { AuthenticatedUser } from '../../common/types/authenticated-user.type';
+import { LocalizeMode } from '../../common/enums/localize-mode.enum';
 import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
 import { PaginatedResponseDto } from '../../shared/dtos/paginated-response.dto';
 import { UserRole } from '../users/enums/user-role.enum';

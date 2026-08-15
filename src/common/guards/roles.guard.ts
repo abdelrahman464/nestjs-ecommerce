@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { I18nHttpException } from '../filters/i18n-http.exception';
 import { Reflector } from '@nestjs/core';
-import { UserRole } from 'src/modules/users/enums/user-role.enum';
+import { UserRole } from '../../modules/users/enums/user-role.enum';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 
 @Injectable()

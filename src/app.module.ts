@@ -74,7 +74,7 @@ import { SUPPORTED_CONTENT_LOCALES } from './common/constants/supported-content-
       fallbackLanguage: SUPPORTED_CONTENT_LOCALES[0] ?? 'en',
       loaderOptions: {
         path: path.join(__dirname, '/i18n/'),
-        watch: true,
+        watch: process.env.NODE_ENV !== 'production',
       },
       resolvers: [
         { use: QueryResolver, options: ['lang'] },

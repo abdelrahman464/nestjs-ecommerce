@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { RedisService } from 'src/redis/redis.service';
+import { RedisService } from '../../redis/redis.service';
 
 const RESET_TTL_SECONDS = 10 * 60; // 10 minutes
 

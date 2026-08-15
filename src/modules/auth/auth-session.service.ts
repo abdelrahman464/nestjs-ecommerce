@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
-import { RedisService } from 'src/redis/redis.service';
-import { parseDurationToSeconds } from 'src/common/utils/parse-duration-to-seconds.util';
+import { RedisService } from '../../redis/redis.service';
+import { parseDurationToSeconds } from '../../common/utils/parse-duration-to-seconds.util';
 import type {
   AuthSessionMeta,
   AuthSessionView,

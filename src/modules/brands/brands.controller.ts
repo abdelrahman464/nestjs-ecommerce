@@ -11,10 +11,10 @@ import {
   Query,
 } from '@nestjs/common';
 import { Types } from 'mongoose';
-import { Localize } from 'src/common/decorators/localize.decorator';
-import { Public } from 'src/common/decorators/public.decorator';
-import { Roles } from 'src/common/decorators/roles.decorator';
-import { LocalizeMode } from 'src/common/enums/localize-mode.enum';
+import { Localize } from '../../common/decorators/localize.decorator';
+import { Public } from '../../common/decorators/public.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { LocalizeMode } from '../../common/enums/localize-mode.enum';
 import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
 import { PaginatedResponseDto } from '../../shared/dtos/paginated-response.dto';
 import { UserRole } from '../users/enums/user-role.enum';

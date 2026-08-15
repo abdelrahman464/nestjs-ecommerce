@@ -16,10 +16,10 @@ import {
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { Types } from 'mongoose';
 import { GetAuthUser } from '../../common/decorators/get-auth-user.decorator';
-import { Localize } from 'src/common/decorators/localize.decorator';
-import { Public } from 'src/common/decorators/public.decorator';
-import { Roles } from 'src/common/decorators/roles.decorator';
-import { LocalizeMode } from 'src/common/enums/localize-mode.enum';
+import { Localize } from '../../common/decorators/localize.decorator';
+import { Public } from '../../common/decorators/public.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { LocalizeMode } from '../../common/enums/localize-mode.enum';
 import { IMAGE_UPLOAD_PIPE } from '../media/media.constants';
 import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
 import { AuthenticatedUser } from '../../common/types/authenticated-user.type';

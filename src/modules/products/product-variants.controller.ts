@@ -15,9 +15,9 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { Types } from 'mongoose';
-import { GetAuthUser } from 'src/common/decorators/get-auth-user.decorator';
-import { Public } from 'src/common/decorators/public.decorator';
-import { Roles } from 'src/common/decorators/roles.decorator';
+import { GetAuthUser } from '../../common/decorators/get-auth-user.decorator';
+import { Public } from '../../common/decorators/public.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { AuthenticatedUser } from '../../common/types/authenticated-user.type';
 import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
 import { IMAGE_UPLOAD_PIPE } from '../media/media.constants';

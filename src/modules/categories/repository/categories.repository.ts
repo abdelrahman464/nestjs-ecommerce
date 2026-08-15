@@ -14,7 +14,7 @@ import {
   mongooseMediaStore,
 } from '../../media/entity-media.store';
 import { ApiFeatures } from '../../../common/utils/api-features.utils';
-import { PaginatedResponseDto } from 'src/shared/dtos/paginated-response.dto';
+import { PaginatedResponseDto } from '../../../shared/dtos/paginated-response.dto';
 import {
   CATEGORY_SEARCH_FIELDS,
   CATEGORY_PUBLIC_FIELDS,

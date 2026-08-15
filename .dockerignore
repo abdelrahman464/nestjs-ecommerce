@@ -1,0 +1,20 @@
+# Build context sent to the daemon. Smaller context = faster builds.
+# `dist` is included — compile on the host (`npm run build`) then copy in.
+node_modules
+coverage
+.git
+.gitignore
+.cursor
+.vscode
+*.md
+docs
+test
+.env
+.env.*
+!.env.example
+npm-debug.log*
+logs
+*.log
+Dockerfile
+docker-compose.yml
+.dockerignore

@@ -8,10 +8,10 @@ import { User, UserSchema } from '../users/schemas/user.schema';
 import { ConfigModule } from '@nestjs/config';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { GoogleStrategy } from './strategies/google.strategy';
-import { TokenService } from 'src/common/tokens/token.service';
-import { CookieService } from 'src/common/cookies/cookie.service';
-import { HashService } from 'src/common/security/hash.service';
-import { CryptoService } from 'src/common/security/crypto.service';
+import { TokenService } from '../../common/tokens/token.service';
+import { CookieService } from '../../common/cookies/cookie.service';
+import { HashService } from '../../common/security/hash.service';
+import { CryptoService } from '../../common/security/crypto.service';
 import { AuthSessionService } from './auth-session.service';
 import { AuthPasswordResetService } from './auth-password-reset.service';
 
