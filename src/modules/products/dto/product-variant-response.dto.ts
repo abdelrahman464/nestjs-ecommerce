@@ -42,6 +42,9 @@ export class ProductVariantResponseDto {
   order: number;
 
   @Expose()
+  images: string[];
+
+  @Expose()
   @Type(() => Date)
   createdAt: Date;
 

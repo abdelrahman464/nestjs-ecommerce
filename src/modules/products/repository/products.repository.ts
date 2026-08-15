@@ -11,6 +11,10 @@ import { ApiFeatures } from '../../../common/utils/api-features.utils';
 import { escapeRegex } from '../../../common/utils/escape-regex.util';
 import { flattenObject } from '../../../common/utils/flatten-object.util';
 import { generateUniqueSlug as buildUniqueSlug } from '../../../common/utils/slug.util';
+import {
+  EntityMediaStore,
+  mongooseMediaStore,
+} from '../../media/entity-media.store';
 import { PaginatedResponseDto } from '../../../shared/dtos/paginated-response.dto';
 import { BRAND_PUBLIC_FIELDS } from '../../brands/constants/brand.constants';
 import { CATEGORY_PUBLIC_FIELDS } from '../../categories/constants/category.constants';
@@ -80,6 +84,10 @@ export class ProductRepository {
     @InjectConnection()
     private readonly connection: Connection,
   ) {}
+
+  mediaStore(): EntityMediaStore {
+    return mongooseMediaStore(this.productModel);
+  }
 
   private static readonly populate = [
     { path: 'category', select: CATEGORY_PUBLIC_FIELDS },

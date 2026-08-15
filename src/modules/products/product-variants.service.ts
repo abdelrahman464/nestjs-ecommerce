@@ -8,6 +8,7 @@ import {
 } from '../../common/utils/mongo-error.util';
 import { InventoryService } from '../inventory/inventory.service';
 import { ReservationsService } from '../inventory/reservations.service';
+import { EntityMediaService } from '../media/entity-media.service';
 import {
   CreateDefaultVariantDto,
   CreateProductVariantDto,
@@ -28,6 +29,11 @@ import { ProductVariantDocument } from './schemas/product-variant.schema';
 import { buildOptionsKey } from './utils/options-key.util';
 import { resolveProductStatus } from './utils/product-status.util';
 
+const VARIANT_GALLERY_FIELDS = {
+  urlsField: 'images',
+  publicIdsField: 'imagePublicIds',
+} as const;
+
 @Injectable()
 export class ProductVariantsService {
   constructor(
@@ -35,6 +41,7 @@ export class ProductVariantsService {
     private readonly productRepository: ProductRepository,
     private readonly inventoryService: InventoryService,
     private readonly reservationsService: ReservationsService,
+    private readonly entityMedia: EntityMediaService,
     @InjectConnection() private readonly connection: Connection,
   ) {}
 
@@ -427,6 +434,12 @@ export class ProductVariantsService {
 
     await this.assertVariantsDeletable([variantId], 'variant');
 
+    await this.entityMedia.destroyGalleryStored(
+      this.variantRepository.mediaStore(),
+      variantId,
+      VARIANT_GALLERY_FIELDS,
+    );
+
     await this.variantRepository.softDeleteVariant(variantId);
 
     if (existing.isDefault) {
@@ -437,6 +450,72 @@ export class ProductVariantsService {
         });
       }
     }
+  }
+
+  async uploadImage(
+    productId: Types.ObjectId,
+    variantId: Types.ObjectId,
+    file: Express.Multer.File,
+  ): Promise<ProductVariantDocument> {
+    await this.findOne(productId, variantId);
+    await this.entityMedia.appendToGallery(
+      this.variantRepository.mediaStore(),
+      variantId,
+      file,
+      VARIANT_GALLERY_FIELDS,
+      'product.variantNotFound',
+    );
+    return this.findOne(productId, variantId);
+  }
+
+  async uploadImages(
+    productId: Types.ObjectId,
+    variantId: Types.ObjectId,
+    files: Express.Multer.File[],
+  ): Promise<ProductVariantDocument> {
+    await this.findOne(productId, variantId);
+    await this.entityMedia.appendManyToGallery(
+      this.variantRepository.mediaStore(),
+      variantId,
+      files,
+      VARIANT_GALLERY_FIELDS,
+      'product.variantNotFound',
+    );
+    return this.findOne(productId, variantId);
+  }
+
+  async removeImage(
+    productId: Types.ObjectId,
+    variantId: Types.ObjectId,
+    url: string,
+  ): Promise<ProductVariantDocument> {
+    await this.findOne(productId, variantId);
+    await this.entityMedia.removeFromGallery(
+      this.variantRepository.mediaStore(),
+      variantId,
+      url,
+      VARIANT_GALLERY_FIELDS,
+      'product.variantNotFound',
+    );
+    return this.findOne(productId, variantId);
+  }
+
+  /**
+   * Release every variant gallery when the parent product is deleted.
+   */
+  async releaseGalleriesForProduct(
+    productId: Types.ObjectId,
+  ): Promise<void> {
+    const variants = await this.variantRepository.findByProductId(productId);
+    await Promise.all(
+      variants.map((variant) =>
+        this.entityMedia.destroyGalleryStored(
+          this.variantRepository.mediaStore(),
+          variant._id,
+          VARIANT_GALLERY_FIELDS,
+        ),
+      ),
+    );
   }
 
   /**

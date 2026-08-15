@@ -121,6 +121,28 @@ real options gets exactly one **default variant**.
 - Variant delete is a soft delete (`deletedAt`); all uniqueness indexes are partial
   on `deletedAt: null` so the SKU/barcode/options-key/default slot free up for reuse.
 
+### Images
+
+Images are **upload-only**. JSON create/update on products and variants must not
+include `images` (unknown fields are rejected). Storefront reads denormalized URLs.
+
+| Entity | Field | Limit | Attach |
+|---|---|---|---|
+| Category | `image` | 1 | `POST /categories/:id/image` |
+| Product | `images[]` | 10 | `POST /products/:id/images` (+ `/bulk`) |
+| Variant | `images[]` | 10 | `POST /products/:productId/variants/:id/images` (+ `/bulk`) |
+
+- Product gallery and variant gallery are **independent** (marketing shots vs SKU
+  photos). Removing one URL from a gallery does not affect the other.
+- Identical bytes are stored once (SHA-256); `refCount` on `media_assets` decides
+  when Cloudinary is destroyed. Same file on the same entity is a no-op.
+- Deleting a variant releases that variant's gallery. Deleting a product releases
+  the product gallery **and** every variant gallery, then soft-deletes.
+- Internal `imagePublicId` / `imagePublicIds[]` are `select: false` and are never
+  accepted or returned on the API.
+
+Details: [`MEDIA.md`](./MEDIA.md).
+
 ### Purchasability (`findAvailableById`)
 
 A variant is sellable only if **all** of:

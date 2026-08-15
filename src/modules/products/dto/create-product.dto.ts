@@ -68,11 +68,6 @@ export class CreateProductDto {
   seo?: SeoFieldsDto;
 
   @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  images?: string[];
-
-  @IsOptional()
   @IsEnum(ProductStatus)
   status?: ProductStatus;
 

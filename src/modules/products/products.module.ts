@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { createI18nMongooseModule } from '../../common/utils/mongoose-i18n-schema.util';
 import { BrandsModule } from '../brands/brands.module';
 import { CategoriesModule } from '../categories/categories.module';
+import { MediaModule } from '../media/media.module';
 import { InventoryModule } from '../inventory/inventory.module';
 import { ProductVariantsController } from './product-variants.controller';
 import { ProductVariantsService } from './product-variants.service';
@@ -24,6 +25,7 @@ import {
     ]),
     CategoriesModule,
     BrandsModule,
+    MediaModule,
     InventoryModule,
   ],
   controllers: [ProductsController, ProductVariantsController],

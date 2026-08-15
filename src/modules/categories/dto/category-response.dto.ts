@@ -16,6 +16,9 @@ export class CategoryResponseDto {
   description: string;
 
   @Expose()
+  image?: string;
+
+  @Expose()
   parentCategory: CategoryResponseDto;
 
   @Expose()

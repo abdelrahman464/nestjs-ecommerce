@@ -26,11 +26,12 @@ async function bootstrap() {
   // So req.ip reflects the real client behind a reverse proxy / Docker.
   app.set('trust proxy', 1);
   const i18n = app.get(I18nService);
-  // Order matters: Nest picks the first matching filter. HttpException filter
-  // must come before the @Catch() catch-all.
+  // Nest reverses global filters before matching (filters.reverse()).
+  // Register catch-all FIRST so after reverse, CustomExceptionFilter runs first
+  // for HttpException and translates i18n keys (e.g. file.uploadFailed → English).
   app.useGlobalFilters(
-    new CustomExceptionFilter(i18n),
     new AllExceptionsFilter(i18n),
+    new CustomExceptionFilter(i18n),
   );
   app.useGlobalPipes(
     new I18nValidationPipe({

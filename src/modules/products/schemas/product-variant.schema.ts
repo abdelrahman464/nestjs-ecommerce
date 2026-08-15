@@ -56,6 +56,17 @@ export class ProductVariant {
   @Prop({ default: 0 })
   order: number;
 
+  /** Public Cloudinary HTTPS URLs — per-variant gallery for the storefront. */
+  @Prop({ type: [String], default: [] })
+  images: string[];
+
+  /**
+   * Parallel to `images[]`: Cloudinary public_id for each URL (same index).
+   * Hidden from API responses; used to destroy assets on remove/delete.
+   */
+  @Prop({ type: [String], default: [], select: false })
+  imagePublicIds: string[];
+
   @Prop({ type: Date, default: null })
   deletedAt?: Date | null;
 }

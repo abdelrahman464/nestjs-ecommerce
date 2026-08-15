@@ -2,6 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Connection, Model, Types } from 'mongoose';
 import { flattenObject } from '../../../common/utils/flatten-object.util';
+import {
+  EntityMediaStore,
+  mongooseMediaStore,
+} from '../../media/entity-media.store';
 import { CreateProductVariantPersistence } from '../dto/create-product-variant.dto';
 import { ReorderVariantItemDto } from '../dto/reorder-variants.dto';
 import { UpdateProductVariantDto } from '../dto/update-product-variant.dto';
@@ -20,6 +24,10 @@ export class ProductVariantRepository {
     @InjectConnection()
     private readonly connection: Connection,
   ) {}
+
+  mediaStore(): EntityMediaStore {
+    return mongooseMediaStore(this.variantModel);
+  }
 
   async findByProductId(
     productId: Types.ObjectId | string,

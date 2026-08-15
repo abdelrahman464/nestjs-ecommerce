@@ -20,6 +20,20 @@ export class Category {
   @Prop({ type: SeoFieldsSchema, default: undefined })
   seo?: SeoFields;
 
+  /**
+   * Public HTTPS URL from Cloudinary (what the frontend displays).
+   * Example: https://res.cloudinary.com/<cloud>/image/upload/v123/.../nest-ecommerce/assets/<hash>
+   */
+  @Prop({ trim: true })
+  image?: string;
+
+  /**
+   * Cloudinary public_id — NOT shown to clients usually, but we store it so we can
+   * delete/replace the asset later (destroy by public_id).
+   */
+  @Prop({ trim: true, select: false })
+  imagePublicId?: string;
+
   @Prop({ default: true })
   isActive: boolean;
 

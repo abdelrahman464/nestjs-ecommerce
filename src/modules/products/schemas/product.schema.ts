@@ -42,8 +42,16 @@ export class Product {
   @Prop({ type: SeoFieldsSchema, default: undefined })
   seo?: SeoFields;
 
+  /** Public Cloudinary (or other) HTTPS URLs — gallery for the storefront. */
   @Prop({ type: [String], default: [] })
   images: string[];
+
+  /**
+   * Parallel to `images[]`: Cloudinary public_id for each URL (same index).
+   * Hidden from API responses; used to destroy assets on remove/replace.
+   */
+  @Prop({ type: [String], default: [], select: false })
+  imagePublicIds: string[];
 
   @Prop({ type: String, enum: ProductStatus, default: ProductStatus.ACTIVE })
   status: ProductStatus;

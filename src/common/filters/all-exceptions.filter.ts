@@ -12,7 +12,9 @@ import { mapMongoError } from '../utils/mongo-error.util';
 
 /**
  * Catch-all for non-HttpException failures (Mongo duplicate keys, CastError, etc.).
- * HttpException / validation stay on CustomExceptionFilter (@Catch(HttpException)).
+ *
+ * HttpException should normally hit CustomExceptionFilter first (see main.ts filter
+ * order + Nest's reverse). This filter still translates if an HttpException lands here.
  */
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -21,25 +23,21 @@ export class AllExceptionsFilter implements ExceptionFilter {
   constructor(private readonly i18n: I18nService) {}
 
   catch(exception: unknown, host: ArgumentsHost) {
-    // Prefer the dedicated HttpException filter when Nest routes here anyway.
+    const ctx = host.switchToHttp();
+    const response = ctx.getResponse<Response>();
+    const request = ctx.getRequest<Request>();
+    const lang = I18nContext.current(host)?.lang;
+
     if (exception instanceof HttpException) {
-      const ctx = host.switchToHttp();
-      const response = ctx.getResponse<Response>();
-      const request = ctx.getRequest<Request>();
       const status = exception.getStatus();
       const body = exception.getResponse();
       return response.status(status).json({
-        ...(typeof body === 'object' && body !== null ? body : { message: body }),
+        ...this.resolveHttpBody(body, lang),
         statusCode: status,
         timestamp: new Date().toISOString(),
         path: request.url,
       });
     }
-
-    const ctx = host.switchToHttp();
-    const response = ctx.getResponse<Response>();
-    const request = ctx.getRequest<Request>();
-    const lang = I18nContext.current(host)?.lang;
 
     const mongoMapped = mapMongoError(exception);
     if (mongoMapped) {
@@ -71,6 +69,51 @@ export class AllExceptionsFilter implements ExceptionFilter {
           stack: exception.stack,
         }),
     });
+  }
+
+  private resolveHttpBody(
+    body: string | object,
+    lang: string | undefined,
+  ): Record<string, unknown> {
+    if (typeof body === 'string') {
+      return {
+        message: this.isI18nKey(body)
+          ? this.translate(body, lang)
+          : body,
+      };
+    }
+
+    if (typeof body === 'object' && body !== null) {
+      const { args, key, message, ...rest } = body as Record<string, unknown>;
+      const i18nKey =
+        typeof key === 'string' && this.isI18nKey(key)
+          ? key
+          : typeof message === 'string' && this.isI18nKey(message)
+            ? message
+            : undefined;
+
+      if (i18nKey) {
+        return {
+          ...rest,
+          message: this.translate(
+            i18nKey,
+            lang,
+            (args as Record<string, unknown>) ?? {},
+          ),
+        };
+      }
+
+      return {
+        ...rest,
+        ...(message !== undefined && { message }),
+      };
+    }
+
+    return { message: body };
+  }
+
+  private isI18nKey(value: string): boolean {
+    return /^[\w]+(?:\.[\w]+)+$/.test(value);
   }
 
   private translate(

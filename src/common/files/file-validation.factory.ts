@@ -1,43 +1,28 @@
 import {
   FileValidator,
-  FileTypeValidator,
   HttpStatus,
   MaxFileSizeValidator,
   ParseFilePipe,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { FileSignatureValidator } from './validators/file-signature.validator';
-import { FileSizeType, FileType } from './types/file.types';
-import { lookup } from 'mime-types';
 import * as bytes from 'bytes';
-
-const createFileTypeRegex = (fileType: FileType[]): RegExp => {
-  // input: ['jpeg', 'gpg']
-  // after map -> output: ["image/jpeg",false]
-  // after filter -> output: ['image/jpeg']
-  const mimeTypes = fileType
-    .map((type) => lookup(type))
-    .filter((mimeType) => mimeType !== false);
-  return new RegExp(`(${mimeTypes.join('|')})`);
-};
+import { FileSizeType, FileType } from './types/file.types';
+import { FileSignatureValidator } from './validators/file-signature.validator';
 
 const createFileValidators = (
   maxSize: FileSizeType,
   fileType: FileType[],
 ): FileValidator[] => {
-  const fileTypeRegex = createFileTypeRegex(fileType);
   return [
     new MaxFileSizeValidator({
       maxSize: bytes(maxSize),
-      message: (maxSize: number) => {
-        return `File size is too large please upload a smaller file (max size is ${bytes(maxSize)} )`;
+      message: (maxSizeBytes: number) => {
+        return `File size is too large please upload a smaller file (max size is ${bytes(maxSizeBytes)} )`;
       },
     }),
-    new FileTypeValidator({
-      fileType: fileTypeRegex,
-      skipMagicNumbersValidation: true,
-    }),
-    new FileSignatureValidator(),
+    // Intentionally NO Nest FileTypeValidator — it trusts client mimetype
+    // (often application/octet-stream). Signature validator is the real gate.
+    new FileSignatureValidator(fileType),
   ];
 };
 

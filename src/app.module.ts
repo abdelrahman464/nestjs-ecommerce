@@ -18,10 +18,11 @@ import stripeConfig from './config/stripe.config';
 import klarnaConfig from './config/klarna.config';
 import paymentConfig from './config/payment.config';
 import redisConfig from './config/redis.config';
+import cloudinaryConfig from './config/cloudinary.config';
 import { buildLoggerParams } from './config/logger.config';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { CategoriesModule } from './modules/categories/categories.module';
-import { FilesUploadModule } from './modules/files-upload/files-upload.module';
+import { MediaModule } from './modules/media/media.module';
 import { CartModule } from './modules/cart/cart.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { OrdersModule } from './modules/orders/orders.module';
@@ -55,12 +56,10 @@ import { SUPPORTED_CONTENT_LOCALES } from './common/constants/supported-content-
         klarnaConfig,
         paymentConfig,
         redisConfig,
+        cloudinaryConfig,
       ],
       // First file wins on duplicate keys. start:prod → .env.production, then .env fallback.
-      envFilePath: [
-        `.env.${process.env.NODE_ENV || 'development'}`,
-        '.env',
-      ],
+      envFilePath: [`.env.${process.env.NODE_ENV || 'development'}`, '.env'],
     }),
     // Structured logging (Pino). Must sit early so HTTP access logs wrap all routes.
     LoggerModule.forRootAsync({
@@ -87,7 +86,7 @@ import { SUPPORTED_CONTENT_LOCALES } from './common/constants/supported-content-
     NotificationModule,
     AuthModule,
     UsersModule,
-    FilesUploadModule,
+    MediaModule,
     CategoriesModule,
     BrandsModule,
     WarehousesModule,

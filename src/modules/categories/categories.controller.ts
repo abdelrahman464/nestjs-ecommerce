@@ -9,22 +9,24 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Types } from 'mongoose';
+import { Localize } from 'src/common/decorators/localize.decorator';
+import { Public } from 'src/common/decorators/public.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
+import { LocalizeMode } from 'src/common/enums/localize-mode.enum';
+import { IMAGE_UPLOAD_PIPE } from '../media/media.constants';
+import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
+import { PaginatedResponseDto } from '../../shared/dtos/paginated-response.dto';
 import { UserRole } from '../users/enums/user-role.enum';
 import { CategoriesService } from './categories.service';
-import { CreateCategoryDto } from './dto/create-category.dto';
 import { BulkCreateCategoriesDto } from './dto/bulk-create-categories.dto';
+import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
-import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
 import { CategoryDocument } from './schemas/category.schema';
-import { Public } from 'src/common/decorators/public.decorator';
-import { PaginatedResponseDto } from '../../shared/dtos/paginated-response.dto';
-import { Localize } from 'src/common/decorators/localize.decorator';
-import { LocalizeMode } from 'src/common/enums/localize-mode.enum';
-import { SerializeDto } from '../../common/decorators/serializeDto.decorator';
-import { CategoryResponseDto } from './dto/category-response.dto';
 
 @Controller('categories')
 // @SerializeDto(CategoryResponseDto)
@@ -93,6 +95,37 @@ export class CategoriesController {
     @Body() updateCategoryDto: UpdateCategoryDto,
   ): Promise<CategoryDocument> {
     return this.categoriesService.update(id, updateCategoryDto);
+  }
+
+  /**
+   * Upload category image → Cloudinary → save URL on the category.
+   *
+   * multipart field name: `file`
+   * Auth: ADMIN or MANAGER
+   *
+   * Example (Postman):
+   *   POST {{base}}/categories/{{id}}/image
+   *   Authorization: Bearer <admin jwt>
+   *   Body → form-data → key `file` (type File) → pick a jpg/png/webp
+   */
+  @Post(':id/image')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadImage(
+    @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
+    @UploadedFile(IMAGE_UPLOAD_PIPE)
+    file: Express.Multer.File,
+  ): Promise<CategoryDocument> {
+    return this.categoriesService.uploadImage(id, file);
+  }
+
+  /** Remove image from category + delete asset on Cloudinary. */
+  @Delete(':id/image')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  async removeImage(
+    @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
+  ): Promise<CategoryDocument> {
+    return this.categoriesService.removeImage(id);
   }
 
   @Delete(':id')

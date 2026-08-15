@@ -32,5 +32,8 @@
   "skuDuplicateInRequest": "SKU \"{sku}\" is duplicated in this request",
   "barcodeDuplicateInRequest": "Barcode \"{barcode}\" is duplicated in this request",
   "variantCombinationDuplicateInRequest": "The same option combination appears more than once in this request",
-  "cannotUnsetDefaultVariant": "Cannot unset the default variant. Mark another variant as default first."
+  "cannotUnsetDefaultVariant": "Cannot unset the default variant. Mark another variant as default first.",
+  "tooManyImages": "A product can have at most {max} images",
+  "imageUrlRequired": "Image URL is required to remove a gallery image",
+  "imageNotFound": "That image URL is not on this product"
 }

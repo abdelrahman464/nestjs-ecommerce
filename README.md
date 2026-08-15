@@ -26,8 +26,8 @@ All endpoints are served under the global prefix **`/api/v1`** (default port `80
 | Auth                | `src/modules/auth/`                              | Register/login, JWT + Redis refresh sessions, Google OAuth                                              |
 | Redis               | `src/redis/`                                     | Shared Redis client (`REDIS_URL`); auth sessions today, queues later                                    |
 | Users               | `src/modules/users/`                             | Profiles, roles (customer / staff / admin)                                                              |
-| Categories / Brands | `src/modules/categories/`, `src/modules/brands/` | Catalog taxonomy                                                                                        |
-| Products            | `src/modules/products/`                          | Catalog entity + **variants** (SKU, barcode, options matrix, default variant)                           |
+| Categories / Brands | `src/modules/categories/`, `src/modules/brands/` | Catalog taxonomy; category image via `POST /categories/:id/image`                                       |
+| Products            | `src/modules/products/`                          | Catalog entity + **variants** (SKU, barcode, options, galleries on product and variant)                 |
 | Warehouses          | `src/modules/warehouses/`                        | Locations, single default warehouse, transfers between sites                                            |
 | Inventory           | `src/modules/inventory/`                         | Append-only movement ledger, per-warehouse levels, **reservations**                                     |
 | Cart                | `src/modules/cart/`                              | Per-user cart with live availability + price-drift flags, quantity caps, conflict-safe writes           |
@@ -35,7 +35,7 @@ All endpoints are served under the global prefix **`/api/v1`** (default port `80
 | Payments            | `src/modules/payments/`                          | Checkout orchestration, webhooks, admin mark-paid/refund, provider strategies, scheduled reconciliation |
 | Reviews             | `src/modules/reviews/`                           | Product reviews, denormalized rating on product                                                         |
 | Articles            | `src/modules/articles/`                          | CMS-style content                                                                                       |
-| Files upload        | `src/modules/files-upload/`                      | Image upload with magic-byte validation                                                                 |
+| Media               | `src/modules/media/`                             | Content-addressed originals, hash dedup, ref-counted Cloudinary lifecycle                               |
 | Notifications       | `src/modules/notifications/`                     | Email delivery                                                                                          |
 
 ## How the commerce core works
@@ -65,7 +65,9 @@ Key invariants (full list in [docs/BUSINESS_RULES.md](docs/BUSINESS_RULES.md)):
 
 ## Project docs
 
-- [Business Rules](docs/BUSINESS_RULES.md) — invariants and rules for Products & Variants, Warehouses, Inventory, Reservations, Orders, Payments. **Read before touching those modules.**
+- [Business Rules](docs/BUSINESS_RULES.md) — invariants for Products & Variants, Warehouses, Inventory, Reservations, Orders, Payments. **Read before touching those modules.**
+- [Media](docs/MEDIA.md) — Cloudinary images: architecture, env, category / product / variant endpoints, Postman.
+- [Test Scenarios](docs/TEST_SCENARIOS.md) — Postman-driven checks for cart, inventory, payments, and media.
 
 ## Getting started
 
@@ -103,6 +105,9 @@ Environment files are loaded per `NODE_ENV`: `.env.development` / `.env.producti
 | `PAYMENT_DEFAULT_CURRENCY`                                                      | Default currency (`EUR`)                                  |
 | `PAYMENT_SUCCESS_URL`, `PAYMENT_CANCEL_URL`, `PAYMENT_CALLBACK_BASE_URL`        | Redirect / webhook base URLs                              |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`                                    | Stripe                                                    |
+| `REDIS_URL`                                                                     | Redis for sessions + BullMQ (`redis://127.0.0.1:6379`)    |
+| `LOG_LEVEL`                                                                     | Pino level (`debug` in dev, `info` in prod)               |
+| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`          | Image storage (see [docs/MEDIA.md](docs/MEDIA.md))        |
 
 ### Seed order (first run)
 
@@ -125,6 +130,7 @@ All routes below are relative to `/api/v1`. Most write endpoints require a staff
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Auth          | `POST /auth/register`, `POST /auth/login`, `GET /auth/google`, `GET /auth/google/callback`                                                               |
 | Products      | `GET/POST /products` (`?search=` → title/desc/slug + variant sku/barcode), `GET /products/stock-overview` (admin), variants bulk/reorder                 |
+| Images        | Category: `POST/DELETE /categories/:id/image`. Product: `POST /products/:id/images` (+ `/bulk`), `DELETE` with `{ url }`. Variant: same under `/products/:productId/variants/:variantId/images`. Details: [docs/MEDIA.md](docs/MEDIA.md) |
 | SEO           | `GET /seo/sitemap`, `GET /seo/{products\|categories\|brands\|articles}/:slug` (public meta for FE)                                                       |
 | Warehouses    | `GET/POST/PATCH/DELETE /warehouses`                                                                                                                      |
 | Inventory     | `POST /inventory/movements` (restock/return/adjustment/damage), `POST /inventory/transfers`, `GET /inventory/levels/...`, `GET /inventory/movements/...` |
@@ -151,6 +157,8 @@ No test suite exists yet (`jest`/`test:e2e` scripts are present from the Nest CL
 
 Done: product hardening, variants, inventory ledger, multi-warehouse, reservations/allocation, orders + payments orchestration, cart hardening, payments hardening (refunds, reconciliation sweep with backoff), product search (`GET /products?search=` matches title/description/shortDescription/slug **and** variant sku/barcode; regex input is escaped), SEO (nested `seo` on product/category/brand/article; public `GET /seo/sitemap` + per-slug resolve), wishlist (per-user variant list, move-to-cart), auth + Redis refresh sessions (multi-device `sid` in Redis; logout/password revoke), queues (email + payment reconciliation on BullMQ), audit log (append-only `audit_logs`; admin `GET /auditLogs`), analytics (admin KPIs over orders/payments/stock).
 
+**Media:** `src/modules/media/` — one original per unique file (SHA-256), `refCount` deletes Cloudinary only when unused. No dump endpoint. Attach via resource routes (category one-image, product gallery, **variant gallery**). Storefront reads denormalized `category.image` / `product.images[]` / `variant.images[]`. Full guide: [docs/MEDIA.md](docs/MEDIA.md).
+
 Observability: **Pino (done)**. OpenTelemetry / full APM skipped for now.
 
 **Pino:** structured HTTP + Nest logs; `LOG_LEVEL` in `.env.*` (dev pretty / prod JSON); `x-request-id` on responses.
@@ -168,6 +176,31 @@ Insights: `paymentFunnel`, `refunds`, `revenueBySource`, `aov`, `reservationHeal
 Query: `?from=&to=&currency=&limit=&page=` (inventory lists also take `threshold` / `warehouseId` / `days`).
 
 Not the same as **audit log** (who did what) or **observability** (Pino system health).
+
+### Cloudinary (catalog images)
+
+1. Sign up at [cloudinary.com](https://cloudinary.com) → Dashboard shows **Cloud name**, **API Key**, **API Secret**.
+2. Put them in `.env.development` (`CLOUDINARY_*`). Never commit secrets.
+3. Login as ADMIN/MANAGER, then attach files on the resource (not on JSON create/update):
+
+```bash
+# Category (one image) — form-data field `file`
+curl -X POST "http://localhost:8000/api/v1/categories/CATEGORY_ID/image" \
+  -b "accessToken=ADMIN_JWT" \
+  -F "file=@./photo.jpg"
+
+# Product gallery
+curl -X POST "http://localhost:8000/api/v1/products/PRODUCT_ID/images" \
+  -b "accessToken=ADMIN_JWT" \
+  -F "file=@./photo.jpg"
+
+# Variant gallery (color/size photos on the SKU)
+curl -X POST "http://localhost:8000/api/v1/products/PRODUCT_ID/variants/VARIANT_ID/images" \
+  -b "accessToken=ADMIN_JWT" \
+  -F "file=@./red.jpg"
+```
+
+Response includes `image` (category) or `images[]` (product/variant) with a `https://res.cloudinary.com/...` URL. Endpoints, dedup, and Postman: [docs/MEDIA.md](docs/MEDIA.md).
 
 ### Redis (local)
 

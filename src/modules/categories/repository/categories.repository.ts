@@ -9,6 +9,10 @@ import { CreateCategoryDto } from '../dto/create-category.dto';
 import { UpdateCategoryDto } from '../dto/update-category.dto';
 import { Category, CategoryDocument } from '../schemas/category.schema';
 import { flattenObject } from '../../../common/utils/flatten-object.util';
+import {
+  EntityMediaStore,
+  mongooseMediaStore,
+} from '../../media/entity-media.store';
 import { ApiFeatures } from '../../../common/utils/api-features.utils';
 import { PaginatedResponseDto } from 'src/shared/dtos/paginated-response.dto';
 import {
@@ -22,6 +26,10 @@ export class CategoryRepository {
     @InjectModel(Category.name)
     private readonly categoryModel: Model<CategoryDocument>,
   ) {}
+
+  mediaStore(): EntityMediaStore {
+    return mongooseMediaStore(this.categoryModel);
+  }
 
   private static readonly populate = [
     { path: 'parentCategory', select: CATEGORY_PUBLIC_FIELDS },

@@ -1,0 +1,8 @@
+{
+  "notConfigured": "Cloudinary ist nicht konfiguriert. Setzen Sie CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY und CLOUDINARY_API_SECRET.",
+  "uploadFailed": "Bild konnte nicht zu Cloudinary hochgeladen werden{detail}",
+  "empty": "Die hochgeladene Datei ist leer.",
+  "tooManyImages": "Dieses Element darf höchstens {max} Bilder haben",
+  "imageUrlRequired": "Bild-URL ist erforderlich, um ein Galeriebild zu entfernen",
+  "imageNotFound": "Diese Bild-URL ist diesem Element nicht zugeordnet"
+}

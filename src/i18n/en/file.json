@@ -1,0 +1,8 @@
+{
+  "notConfigured": "Cloudinary is not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET.",
+  "uploadFailed": "Failed to upload image to Cloudinary{detail}",
+  "empty": "Uploaded file is empty.",
+  "tooManyImages": "This item can have at most {max} images",
+  "imageUrlRequired": "Image URL is required to remove a gallery image",
+  "imageNotFound": "That image URL is not attached to this item"
+}

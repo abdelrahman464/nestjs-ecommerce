@@ -32,5 +32,8 @@
   "skuDuplicateInRequest": "SKU \"{sku}\" ist in dieser Anfrage doppelt",
   "barcodeDuplicateInRequest": "Barcode \"{barcode}\" ist in dieser Anfrage doppelt",
   "variantCombinationDuplicateInRequest": "Dieselbe Optionskombination kommt in dieser Anfrage mehrfach vor",
-  "cannotUnsetDefaultVariant": "Die Standardvariante kann nicht deaktiviert werden. Markieren Sie zuerst eine andere Variante als Standard."
+  "cannotUnsetDefaultVariant": "Die Standardvariante kann nicht deaktiviert werden. Markieren Sie zuerst eine andere Variante als Standard.",
+  "tooManyImages": "Ein Produkt darf höchstens {max} Bilder haben",
+  "imageUrlRequired": "Bild-URL ist erforderlich, um ein Galeriebild zu entfernen",
+  "imageNotFound": "Diese Bild-URL gehört nicht zu diesem Produkt"
 }

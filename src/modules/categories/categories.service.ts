@@ -8,15 +8,22 @@ import {
 import { I18nHttpException } from '../../common/filters/i18n-http.exception';
 import { generateUniqueSlug } from '../../common/utils/slug.util';
 import { PaginatedResponseDto } from '../../shared/dtos/paginated-response.dto';
+import { EntityMediaService } from '../media/entity-media.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CategoryRepository } from './repository/categories.repository';
 import { Category, CategoryDocument } from './schemas/category.schema';
 
+const CATEGORY_IMAGE_FIELDS = {
+  urlField: 'image',
+  publicIdField: 'imagePublicId',
+} as const;
+
 @Injectable()
 export class CategoriesService {
   constructor(
     private readonly categoryRepository: CategoryRepository,
+    private readonly entityMedia: EntityMediaService,
     @InjectModel(Category.name) private categoryModel: Model<CategoryDocument>,
   ) {}
 
@@ -206,7 +213,7 @@ export class CategoriesService {
   }
 
   async delete(id: Types.ObjectId): Promise<void> {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
 
     const childCount =
       await this.categoryRepository.countChildrenByParentCategory(id);
@@ -217,7 +224,37 @@ export class CategoriesService {
       );
     }
 
+    await this.entityMedia.destroySingleStored(
+      this.categoryRepository.mediaStore(),
+      id,
+      CATEGORY_IMAGE_FIELDS,
+    );
+
     await this.categoryRepository.deleteCategory(id);
+  }
+
+  async uploadImage(
+    id: Types.ObjectId,
+    file: Express.Multer.File,
+  ): Promise<CategoryDocument> {
+    await this.entityMedia.replaceSingle(
+      this.categoryRepository.mediaStore(),
+      id,
+      file,
+      CATEGORY_IMAGE_FIELDS,
+      'category.notFound',
+    );
+    return this.findOne(id);
+  }
+
+  async removeImage(id: Types.ObjectId): Promise<CategoryDocument> {
+    await this.entityMedia.clearSingle(
+      this.categoryRepository.mediaStore(),
+      id,
+      CATEGORY_IMAGE_FIELDS,
+      'category.notFound',
+    );
+    return this.findOne(id);
   }
 
   private async ensureParentCategoryExists(

@@ -13,6 +13,7 @@ import {
 import { PaginatedResponseDto } from '../../shared/dtos/paginated-response.dto';
 import { BrandRepository } from '../brands/repository/brands.repository';
 import { CategoryRepository } from '../categories/repository/categories.repository';
+import { EntityMediaService } from '../media/entity-media.service';
 import {
   CreateProductDto,
   CreateProductPersistence,
@@ -24,7 +25,11 @@ import { ProductVariantsService } from './product-variants.service';
 import { ProductVariantRepository } from './repository/product-variants.repository';
 import { ProductRepository } from './repository/products.repository';
 import { ProductDocument } from './schemas/product.schema';
-import { AuthenticatedUser } from '../../common/types/authenticated-user.type';
+
+const PRODUCT_GALLERY_FIELDS = {
+  urlsField: 'images',
+  publicIdsField: 'imagePublicIds',
+} as const;
 
 @Injectable()
 export class ProductsService {
@@ -34,6 +39,7 @@ export class ProductsService {
     private readonly variantsService: ProductVariantsService,
     private readonly categoryRepository: CategoryRepository,
     private readonly brandRepository: BrandRepository,
+    private readonly entityMedia: EntityMediaService,
     @InjectConnection() private readonly connection: Connection,
   ) {}
 
@@ -111,7 +117,6 @@ export class ProductsService {
       description: dto.description,
       shortDescription: dto.shortDescription,
       seo: dto.seo,
-      images: dto.images,
       showOnBanner: dto.showOnBanner,
       slug,
       order,
@@ -229,6 +234,14 @@ export class ProductsService {
   async delete(id: Types.ObjectId): Promise<void> {
     await this.findOne(id);
     await this.variantsService.assertProductVariantsDeletable(id);
+
+    await this.entityMedia.destroyGalleryStored(
+      this.productRepository.mediaStore(),
+      id,
+      PRODUCT_GALLERY_FIELDS,
+    );
+    await this.variantsService.releaseGalleriesForProduct(id);
+
     const session = await this.connection.startSession();
     try {
       await session.withTransaction(async () => {
@@ -238,6 +251,48 @@ export class ProductsService {
     } finally {
       await session.endSession();
     }
+  }
+
+  async uploadImage(
+    id: Types.ObjectId,
+    file: Express.Multer.File,
+  ): Promise<ProductDocument> {
+    await this.entityMedia.appendToGallery(
+      this.productRepository.mediaStore(),
+      id,
+      file,
+      PRODUCT_GALLERY_FIELDS,
+      'product.notFound',
+    );
+    return this.findOne(id);
+  }
+
+  async uploadImages(
+    id: Types.ObjectId,
+    files: Express.Multer.File[],
+  ): Promise<ProductDocument> {
+    await this.entityMedia.appendManyToGallery(
+      this.productRepository.mediaStore(),
+      id,
+      files,
+      PRODUCT_GALLERY_FIELDS,
+      'product.notFound',
+    );
+    return this.findOne(id);
+  }
+
+  async removeImage(
+    id: Types.ObjectId,
+    url: string,
+  ): Promise<ProductDocument> {
+    await this.entityMedia.removeFromGallery(
+      this.productRepository.mediaStore(),
+      id,
+      url,
+      PRODUCT_GALLERY_FIELDS,
+      'product.notFound',
+    );
+    return this.findOne(id);
   }
 
   private async assertCategoryAndBrand(

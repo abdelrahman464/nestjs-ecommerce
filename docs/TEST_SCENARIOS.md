@@ -1,13 +1,14 @@
-# Manual Test Scenarios — Cart, Warehousing, Reservations, Payments
+# Manual Test Scenarios — Cart, Warehousing, Reservations, Payments, Media
 
 A Postman-driven test plan for the hardest parts of the system: cart hardening,
 multi-warehouse allocation, reservations/availability, checkout, manual orders,
-refunds, and reconciliation. Each scenario states the **rule being verified**,
-the **setup**, the **requests**, and the **expected result**, so a failure
-tells you exactly which invariant broke.
+refunds, reconciliation, and catalog images. Each scenario states the **rule
+being verified**, the **setup**, the **requests**, and the **expected result**,
+so a failure tells you exactly which invariant broke.
 
 Cross-reference: [`BUSINESS_RULES.md`](./BUSINESS_RULES.md) explains *why*
-each rule exists; this file is only about *proving it holds*.
+each rule exists; [`MEDIA.md`](./MEDIA.md) covers image attach/release. This
+file is only about *proving it holds*.
 
 ---
 
@@ -199,3 +200,29 @@ click after any backend change:
   correctly in one final `GET /cart`.
 - **Flow D — Deletion guards:** try deleting a variant with stock (6.1) →
   drain stock → delete succeeds (6.3).
+- **Flow E — Catalog images:** category replace (9.1) → product gallery +
+  variant gallery (9.3–9.5) → same-file dedup (9.6) → delete variant then
+  product and confirm Cloudinary/registry cleanup (9.8).
+
+---
+
+## 9. Catalog images (Cloudinary)
+
+Cross-reference: [`MEDIA.md`](./MEDIA.md). Auth: ADMIN or MANAGER. Multipart
+field is `file` (single) or `files` (bulk). JPEG/PNG/WebP, max 3MB, magic-byte
+check (Postman `application/octet-stream` is OK).
+
+Setup: a category, a product, and at least two variants on that product
+(so a variant can be deleted without hitting `cannotDeleteLastVariant`).
+
+| # | Scenario | Rule | Steps | Expected |
+|---|---|---|---|---|
+| 9.1 | Category upload | One image, denormalized URL | `POST /categories/:id/image` form-data `file` | `200`, `image` is a `res.cloudinary.com` URL; GET category returns it |
+| 9.2 | Category replace | Re-upload releases the previous original | Upload A, then upload B | `image` is B's URL; `media_assets` for A has `refCount` 0 / row gone if unused |
+| 9.3 | Product gallery | JSON create must not set images | `POST /products` with `"images": ["http://x"]` then `POST /products/:id/images` | Create → `400` (unknown field); upload → `images[]` length 1 |
+| 9.4 | Product bulk + cap | Max 10 on the gallery | `POST /products/:id/images/bulk` with 2 files, then keep uploading until 11th | First bulk appends; 11th → `400 file.tooManyImages` |
+| 9.5 | Variant gallery | Independent of product gallery | `POST /products/:productId/variants/:variantId/images` with a file | Variant `images[]` has the URL; product `images[]` unchanged |
+| 9.6 | Same bytes, two entities | Hash dedup, `refCount++` | Upload the same jpg to product and to variant | Same URL/publicId; `media_assets.refCount` is 2 |
+| 9.7 | Remove by URL | Release one gallery slot | `DELETE /products/:productId/variants/:variantId/images` `{ "url": "<that url>" }` | Variant gallery no longer has it; product gallery still has it if 9.6 ran |
+| 9.8 | Delete variant / product | Galleries released before soft-delete | Drain stock, `DELETE` variant, then `DELETE` product | Variant images gone from registry if unused; product + remaining variant images released |
+| 9.9 | Missing Cloudinary env | Fail closed | Unset `CLOUDINARY_*`, restart, upload | `503 file.notConfigured` |
