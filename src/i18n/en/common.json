@@ -4,5 +4,6 @@
   "invalidToken": "Invalid token",
   "duplicateKey": "A record with this {field} already exists",
   "validationFailed": "Validation failed: {details}",
-  "internalError": "Something went wrong. Please try again later."
+  "internalError": "Something went wrong. Please try again later.",
+  "tooManyRequests": "Too many requests. Please try again in {retryAfter} seconds."
 }

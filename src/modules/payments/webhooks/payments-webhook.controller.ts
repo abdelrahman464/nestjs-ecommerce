@@ -7,10 +7,17 @@ import {
   Req,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../../../common/decorators/public.decorator';
 import { PaymentProvider } from '../enums/payment-provider.enum';
 import { PaymentsService } from '../payments.service';
 
+/**
+ * Provider callbacks are signature-verified in PaymentsService.
+ * Skip the HTTP bouncer: Stripe/Klarna retry on 429, and a dropped webhook
+ * can leave a paid order stuck as pending (customer charged, shop silent).
+ */
+@SkipThrottle()
 @Controller('payments/webhook')
 export class PaymentsWebhookController {
   constructor(private readonly paymentsService: PaymentsService) {}

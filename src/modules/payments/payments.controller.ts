@@ -8,6 +8,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { GetAuthUser } from '../../common/decorators/get-auth-user.decorator';
 import type { AuthenticatedUser } from '../../common/types/authenticated-user.type';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -20,12 +21,14 @@ import { CheckoutResponse, PaymentsService } from './payments.service';
 import { PaymentDocument } from './schemas/payment.schema';
 import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
 import { Types } from 'mongoose';
+import { THROTTLE } from '../../config/throttler.config';
 
 @Controller('payments')
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
   @Post('checkout/resume')
+  @Throttle(THROTTLE.CHECKOUT)
   @Roles(UserRole.USER, UserRole.ADMIN, UserRole.MANAGER)
   @HttpCode(HttpStatus.OK)
   async resumeCheckout(
@@ -44,6 +47,8 @@ export class PaymentsController {
   }
 
   @Post('checkout')
+  // Caps Stripe/Klarna session creation — a retry storm is a card-machine jammed on "pay".
+  @Throttle(THROTTLE.CHECKOUT)
   @Roles(UserRole.USER, UserRole.ADMIN, UserRole.MANAGER)
   @HttpCode(HttpStatus.CREATED)
   async checkout(

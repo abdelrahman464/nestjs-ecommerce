@@ -23,7 +23,8 @@ async function bootstrap() {
   });
   // Route Nest Logger + HTTP access logs through Pino.
   app.useLogger(app.get(Logger));
-  // So req.ip reflects the real client behind a reverse proxy / Docker.
+  // So req.ip is the real client behind nginx/Docker — rate limiting keys on it.
+  // Without this, every request looks like the proxy and one bot can lock the shop.
   app.set('trust proxy', 1);
   const i18n = app.get(I18nService);
   // Nest reverses global filters before matching (filters.reverse()).
@@ -45,6 +46,7 @@ async function bootstrap() {
   );
   const reflector = app.get(Reflector);
   app.useGlobalGuards(
+    
     new JwtAuthGuard(
       app.get(TokenService),
       app.get(getModelToken(User.name)),
