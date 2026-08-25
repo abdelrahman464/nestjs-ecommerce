@@ -7,6 +7,7 @@ import { USER_PUBLIC_FIELDS } from '../../users/constants/user.constants';
 import { PaymentProvider } from '../enums/payment-provider.enum';
 import { PaymentStatus } from '../enums/payment-status.enum';
 import { Payment, PaymentDocument } from '../schemas/payment.schema';
+import { PAYMENT_SEARCH_FIELDS } from '../constants/payment.constants';
 
 export interface CreatePaymentPayload {
   user: Types.ObjectId | string;
@@ -113,7 +114,7 @@ export class PaymentRepository {
       this.paymentModel,
     );
 
-    return features.filter().sort().paginate().executePaginated();
+    return features.filter().search([...PAYMENT_SEARCH_FIELDS]).sort().paginate().executePaginated();
   }
 
   async findPaymentById(

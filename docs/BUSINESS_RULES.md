@@ -14,6 +14,8 @@ Modules covered:
 | Orders | `src/modules/orders/` |
 | Payments | `src/modules/payments/` |
 | Cart | `src/modules/cart/` |
+| Users | `src/modules/users/` |
+| Analytics (read-only KPIs) | `src/modules/analytics/` |
 
 ---
 
@@ -142,6 +144,28 @@ include `images` (unknown fields are rejected). Storefront reads denormalized UR
   accepted or returned on the API.
 
 Details: [`MEDIA.md`](./MEDIA.md).
+
+### Public storefront catalog
+
+`GET /products/storefront` and `GET /products/storefront/slug/:slug` are the
+customer catalog. They return **active** products with **active** variants only.
+Stock is live `available = max(0, on-hand − reserved)` — no warehouse ids, no
+`reservedQuantity`, no `deletedAt`. Routes sit **before** `@Get(':id')` so
+`"storefront"` is not parsed as an ObjectId.
+
+### Admin stock overview (`GET /products/stockOverview`)
+
+ADMIN/MANAGER. One product document with nested variants and `byWarehouse`.
+Live numbers come from `inventory_levels` (not catalog `status`).
+
+**Low stock** (`stockState=lowStock`, `lowStock=true`, or `threshold`) uses the
+**same grain as** `GET /analytics/lowStock`: one response row per warehouse
+level where `available ≤ threshold` (default 5, **including 0**). A SKU with 2
+in Hamburg and 5 in Berlin is **two rows** (2 and 5), not one product with
+Available 7. Soft-deleted products/variants are excluded.
+
+`outOfStock` is live **on-hand quantity === 0**, not catalog `status`.
+`status=outOfStock` on this endpoint is remapped to that quantity check.
 
 ### Purchasability (`findAvailableById`)
 
@@ -321,7 +345,13 @@ buy, which is worse UX.
 
 `GET /cart` and every mutation return a computed view, not the raw document.
 Nothing is silently dropped or auto-corrected — the client decides what to do
-with a flagged line. Per item:
+with a flagged line. Nested `variant` and `product` (plus category/brand) are
+customer-safe: no `deletedAt`, barcode, or warehouse internals.
+`availableQuantity` is live. `productNameAtAdd` is a frozen title for display
+when the live product is gone — it is **not** used for billing and there is
+no `nameChanged` flag (only `priceChanged` uses `unitPriceAtAdd`).
+
+Per item:
 
 - `available` + `unavailableReason` (`deleted` | `inactive` | `outOfStock` |
   `insufficientStock`), checked in that priority order against the **live**
@@ -575,3 +605,84 @@ otherwise get stuck, independent of any webhook:
 - If upgrading from the pre-warehouse ledger: drop the old unique index
   `referenceType_1_referenceId_1_variant_1_type_1` on `inventory_movements`
   (replaced by the variant that includes `warehouse`).
+
+---
+
+## 13. Analytics (read-only KPIs)
+
+`GET /api/v1/analytics/...` — ADMIN + MANAGER. Aggregates over existing
+collections; **no writes**. Not the audit log (who did what) and not Pino
+(system health).
+
+Window: `?from=&to=` (inclusive ISO; date-only `to` includes the whole UTC day)
+and optional `currency`. Omit both dates → all time.
+
+### Money (`GET /analytics/summary` and `GET /analytics/refunds`)
+
+A refund **flips the same payment** `paid` → `refunded`. There is no second
+payment row. Therefore:
+
+- **`grossRevenue`** = sum of `amount` where `status=paid` (window on `paidAt`).
+  Cancelled orders never captured money and are not in this total.
+- **`refundedAmount`** = sum of `amount` where `status=refunded` (window on
+  `refundedAt`). Already excluded from `grossRevenue`.
+- There is **no `netRevenue`**. Subtracting refunds from `grossRevenue` would
+  double-count (the refunded payment already left the paid bucket).
+- Money amounts are rounded to 2 decimal places.
+
+**Refund rate** (`GET /analytics/refunds`):
+
+`refundedAmount / (grossRevenue + refundedAmount)`
+
+That is refunds as a share of **all captured money** (still-paid + already
+refunded). Rounded to 4 decimal places (e.g. `0.2223` = 22.23%). `0` if nothing
+was captured.
+
+### Top products (`GET /analytics/topProducts`)
+
+Paid order lines, ranked by units then revenue. `limit` is how many **products**
+to return. Each product includes `variants[]` (every SKU of that product that
+sold in the window, best first). Product totals are the sum of those variants.
+There is **no** separate `/analytics/topVariants` route. `slowMovers` remains
+its own list (least-selling SKUs catalog-wide).
+
+### Low stock vs stockouts
+
+Both are **warehouse-level** (`inventory_levels` rows), not product totals.
+
+- `GET /analytics/lowStock?threshold=5` → `available ≤ 5` (includes 0).
+- `GET /analytics/stockouts` → same pipeline with `threshold=0` (`available ≤ 0`).
+- Soft-deleted products/variants are excluded before pagination.
+
+`GET /products/stockOverview?stockState=lowStock` uses this same warehouse grain
+(see §2).
+
+### Customer segments vs top customers
+
+- `GET /analytics/customerSegments` — **counts**: `newCustomers` (first-ever paid
+  order is inside the window) vs `returningCustomers` (had a paid order **before**
+  `from`, and bought again in the window). `totalBuyersInWindow` = new + returning.
+  All-time (no `from`): almost everyone is “new”.
+- `GET /analytics/topCustomers` — **list** of highest spenders (`userId`, name,
+  email, `orderCount`, `spend`). No new/returning flag.
+
+AOV (`GET /analytics/aov`) is `grossRevenue / paidCount` per currency, rounded
+to 2 decimals.
+
+---
+
+## 14. Users (profile vs admin)
+
+- `PATCH /users/profile` — any authenticated user; `name` / `email` only (`role`
+  is rejected). `GET /users/profile` is the matching read.
+- `PATCH /users/:id` and `DELETE /users/:id` — **ADMIN only**; update DTO may
+  include `role`.
+- `GET /users` — ADMIN, paginated, all roles. Filters: `role`, `hasGoogle`,
+  `createdAt[gte|lte]`, `search` on name/email, `sort` (default `-createdAt`).
+- `GET /users/customers` — ADMIN + MANAGER (same as `POST /orders/manual`).
+  Only `role: USER`, fields `_id name email`, search name/email, default sort
+  `name`. Use the selected `_id` as `customerId` on a manual order.
+
+Static paths (`profile`, `customers`) are declared **before** `:id` so Nest
+does not treat those strings as ObjectIds. HTTP DTOs never accept `googleId`
+(`googleId` is written only by the Google auth link flow).

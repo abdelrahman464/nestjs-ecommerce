@@ -1,10 +1,10 @@
-# Manual Test Scenarios — Cart, Warehousing, Reservations, Payments, Media
+# Manual Test Scenarios — Cart, Warehousing, Reservations, Payments, Media, Analytics
 
 A Postman-driven test plan for the hardest parts of the system: cart hardening,
 multi-warehouse allocation, reservations/availability, checkout, manual orders,
-refunds, reconciliation, and catalog images. Each scenario states the **rule
-being verified**, the **setup**, the **requests**, and the **expected result**,
-so a failure tells you exactly which invariant broke.
+refunds, reconciliation, catalog images, and admin analytics. Each scenario states
+the **rule being verified**, the **setup**, the **requests**, and the **expected
+result**, so a failure tells you exactly which invariant broke.
 
 Cross-reference: [`BUSINESS_RULES.md`](./BUSINESS_RULES.md) explains *why*
 each rule exists; [`MEDIA.md`](./MEDIA.md) covers image attach/release. This
@@ -203,6 +203,9 @@ click after any backend change:
 - **Flow E — Catalog images:** category replace (9.1) → product gallery +
   variant gallery (9.3–9.5) → same-file dedup (9.6) → delete variant then
   product and confirm Cloudinary/registry cleanup (9.8).
+- **Flow F — Analytics vs stock overview:** summary money (10.1) → refund rate
+  (10.2) → topProducts variants (10.3) → lowStock warehouse rows (10.4) vs
+  stockOverview (10.5) must return the same count.
 
 ---
 
@@ -226,3 +229,22 @@ Setup: a category, a product, and at least two variants on that product
 | 9.7 | Remove by URL | Release one gallery slot | `DELETE /products/:productId/variants/:variantId/images` `{ "url": "<that url>" }` | Variant gallery no longer has it; product gallery still has it if 9.6 ran |
 | 9.8 | Delete variant / product | Galleries released before soft-delete | Drain stock, `DELETE` variant, then `DELETE` product | Variant images gone from registry if unused; product + remaining variant images released |
 | 9.9 | Missing Cloudinary env | Fail closed | Unset `CLOUDINARY_*`, restart, upload | `503 file.notConfigured` |
+
+---
+
+## 10. Analytics & stock overview
+
+Auth: ADMIN or MANAGER. Cross-reference: [`BUSINESS_RULES.md`](./BUSINESS_RULES.md) §2 (stock overview), §13 (analytics), §14 (users).
+
+Setup for 10.4–10.5: one variant with **2** available in warehouse A and **5** in warehouse B (and nothing else ≤ 5 except a separate SKU with **0**).
+
+| # | Scenario | Rule | Steps | Expected |
+|---|---|---|---|---|
+| 10.1 | Summary has no netRevenue | Refunds already left the paid bucket | `GET /analytics/summary` with 9 paid + 1 refunded payment | `money[].grossRevenue` = paid sum only; `refundedAmount` = refund sum; **no** `netRevenue` field |
+| 10.2 | Refund rate uses captured money | Rate is refunded ÷ (paid + refunded) | Same data as 10.1, `GET /analytics/refunds` | `refundRate` ≈ `refundedAmount / (grossRevenue + refundedAmount)`, 4 decimals, not `refunded / gross` |
+| 10.3 | Top products nest variants | One list, not two routes | `GET /analytics/topProducts?limit=10` | Each product has `variants[]` (sku, unitsSold, revenue). `GET /analytics/topVariants` → **404** |
+| 10.4 | Low stock is per warehouse | `available ≤ threshold` including 0 | `GET /analytics/lowStock?threshold=5` | **3 rows** if data is 0 + 2 + 5 (same SKU twice, two warehouses). Soft-deleted SKUs absent |
+| 10.5 | Stock overview matches that grain | Same filter, same row count | `GET /products/stockOverview?stockState=lowStock&threshold=5` | Same **3** rows as 10.4; iPhone-like SKU is **two** lines (Available 2 and 5), not one with 7 |
+| 10.6 | Segments vs top customers | Counts vs spender list | `GET /analytics/customerSegments?from=` last month vs `GET /analytics/topCustomers` | Segments: `newCustomers` + `returningCustomers` = `totalBuyersInWindow`. Top customers: `spend` / `orderCount`, **no** `returningCustomers` |
+| 10.7 | Storefront hides internals | Public catalog | `GET /products/storefront` (no auth) | Active products/variants only; `available` present; no reserved/warehouse/deletedAt |
+| 10.8 | Profile vs admin user write | Role is admin-only | As USER: `PATCH /users/profile { "name": "A" }` then `PATCH /users/:ownId { "role": "admin" }` | Profile `200`; admin-style patch on `:id` → **403**. `GET /users/customers` as MANAGER → USER roles only |

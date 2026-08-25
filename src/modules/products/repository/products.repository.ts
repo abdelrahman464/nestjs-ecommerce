@@ -26,6 +26,7 @@ import { CreateProductPersistence } from '../dto/create-product.dto';
 import { ReorderProductItemDto } from '../dto/reorder-products.dto';
 import { UpdateProductDto } from '../dto/update-product.dto';
 import { ProductStatus } from '../enums/product-status.enum';
+import { ProductUnit } from '../enums/product-unit.enum';
 import { Product, ProductDocument } from '../schemas/product.schema';
 import {
   ProductVariant,
@@ -73,6 +74,104 @@ export type ProductStockOverview = {
   totalAvailable: number;
   variants: VariantStockOverview[];
 };
+
+/** Customer-safe variant: prices + live available units, no warehouse/reserved. */
+export type StorefrontVariant = {
+  _id: Types.ObjectId;
+  sku: string;
+  price: number;
+  priceAfterDiscount: number;
+  status: string;
+  isDefault: boolean;
+  options: Record<string, string>;
+  unit: string;
+  order: number;
+  images: string[];
+  available: number;
+};
+
+export type StorefrontCategory = {
+  _id: Types.ObjectId;
+  title: string;
+  slug: string;
+  image?: string;
+};
+
+export type StorefrontBrand = {
+  _id: Types.ObjectId;
+  title: string;
+  slug: string;
+  logo?: string;
+};
+
+export type StorefrontProduct = {
+  _id: Types.ObjectId;
+  title: string;
+  slug: string;
+  images: string[];
+  category: StorefrontCategory | null;
+  brand: StorefrontBrand | null;
+  showOnBanner: boolean;
+  ratingsAverage: number;
+  ratingsQuantity: number;
+  totalAvailable: number;
+  variants: StorefrontVariant[];
+};
+
+function parseObjectId(value: unknown): Types.ObjectId | undefined {
+  if (typeof value !== 'string' || !Types.ObjectId.isValid(value)) {
+    return undefined;
+  }
+  return new Types.ObjectId(value);
+}
+
+function parseNonNegativeNumber(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function parseBooleanQuery(value: unknown): boolean | undefined {
+  if (value === true || value === 'true' || value === '1') return true;
+  if (value === false || value === 'false' || value === '0') return false;
+  return undefined;
+}
+
+function parseDate(value: unknown): Date | undefined {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
+function parseDateRange(
+  value: unknown,
+): Record<string, Date> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  const src = value as Record<string, unknown>;
+  const range: Record<string, Date> = {};
+  for (const op of ['gte', 'gt', 'lte', 'lt'] as const) {
+    const parsed = parseDate(src[op]);
+    if (parsed) range[`$${op}`] = parsed;
+  }
+  return Object.keys(range).length ? range : undefined;
+}
+
+function parseProductStatus(value: unknown): ProductStatus | undefined {
+  if (typeof value !== 'string' || value === 'all') return undefined;
+  return (Object.values(ProductStatus) as string[]).includes(value)
+    ? (value as ProductStatus)
+    : undefined;
+}
+
+function parseProductUnit(value: unknown): ProductUnit | undefined {
+  if (typeof value !== 'string') return undefined;
+  return (Object.values(ProductUnit) as string[]).includes(value)
+    ? (value as ProductUnit)
+    : undefined;
+}
 
 @Injectable()
 export class ProductRepository {
@@ -196,13 +295,20 @@ export class ProductRepository {
    * - warehouseId scope → drop products with no levels in that warehouse
    *   (totalOnHand + totalReserved both 0 means "never stocked there")
    * - stockState → filter on the rolled-up numbers:
-   *     inStock      → totalAvailable > 0
-   *     outOfStock   → totalAvailable === 0
-   *     hasReserved  → totalReserved > 0  (useful to find held checkout stock)
+   *     inStock      → at least one variant with available > 0
+   *     outOfStock   → variant on-hand quantity === 0 (live levels, not status)
+   *     hasReserved  → variant reserved > 0
+   *     lowStock     → a warehouse row with available <= threshold (default 5),
+   *                    same rule as GET /analytics/lowStock (includes 0)
    */
   private static buildPostJoinStockFilters(opts: {
     scopedToWarehouse: boolean;
-    stockState?: string;
+    minAvailable?: number;
+    maxAvailable?: number;
+    minOnHand?: number;
+    maxOnHand?: number;
+    minReserved?: number;
+    maxReserved?: number;
   }): Record<string, unknown>[] {
     const stages: Record<string, unknown>[] = [];
 
@@ -214,12 +320,25 @@ export class ProductRepository {
       });
     }
 
-    if (opts.stockState === 'inStock') {
-      stages.push({ $match: { totalAvailable: { $gt: 0 } } });
-    } else if (opts.stockState === 'outOfStock') {
-      stages.push({ $match: { totalAvailable: 0 } });
-    } else if (opts.stockState === 'hasReserved') {
-      stages.push({ $match: { totalReserved: { $gt: 0 } } });
+    const available: Record<string, number> = {};
+    if (opts.minAvailable !== undefined) available.$gte = opts.minAvailable;
+    if (opts.maxAvailable !== undefined) available.$lte = opts.maxAvailable;
+    if (Object.keys(available).length) {
+      stages.push({ $match: { totalAvailable: available } });
+    }
+
+    const onHand: Record<string, number> = {};
+    if (opts.minOnHand !== undefined) onHand.$gte = opts.minOnHand;
+    if (opts.maxOnHand !== undefined) onHand.$lte = opts.maxOnHand;
+    if (Object.keys(onHand).length) {
+      stages.push({ $match: { totalOnHand: onHand } });
+    }
+
+    const reserved: Record<string, number> = {};
+    if (opts.minReserved !== undefined) reserved.$gte = opts.minReserved;
+    if (opts.maxReserved !== undefined) reserved.$lte = opts.maxReserved;
+    if (Object.keys(reserved).length) {
+      stages.push({ $match: { totalReserved: reserved } });
     }
 
     return stages;
@@ -242,23 +361,32 @@ export class ProductRepository {
    * localized `title` INSIDE the pipeline using the request's language.
    */
   /**
-   * Supported query filters for `GET /products/stock-overview`:
+   * Supported query filters for `GET /products/stockOverview`:
    *
-   * | Param            | Where it runs                         | Example                          |
-   * |------------------|---------------------------------------|----------------------------------|
-   * | status           | product early $match                  | `active` / `inactive` / `outOfStock` |
-   * | category         | product early $match                  | ObjectId                         |
-   * | brand            | product early $match                  | ObjectId                         |
-   * | search           | product early $match (title/slug) +   | `shirt` / `SKU-001`              |
-   * |                  | also matches products that have a     |                                  |
-   * |                  | variant whose sku/barcode contains it |                                  |
-   * | variantStatus    | inside variants $lookup $match        | `active`                         |
-   * | warehouseId      | inside levels $lookup $match          | ObjectId — only that warehouse's |
-   * |                  |                                       | levels; products with 0 there    |
-   * |                  |                                       | are dropped after totals         |
-   * | stockState       | AFTER totals are computed             | `inStock` / `outOfStock` /       |
-   * |                  |                                       | `hasReserved`                    |
-   * | page, limit      | $facet pagination                     | page=1&limit=20                  |
+   * | Param                         | Where it runs                    | Example |
+   * |-------------------------------|----------------------------------|---------|
+   * | status                        | product $match                   | `active` / `inactive` / `outOfStock` / `all` |
+   * | category / brand              | product $match                   | ObjectId |
+   * | slug                          | product $match                   | `iphone-15-pro` |
+   * | showOnBanner                  | product $match                   | `true` / `false` |
+   * | createdAt[gte] / createdAt[lte] | product $match                 | ISO date |
+   * | search                        | title/slug/description OR sku/barcode | `shirt` |
+   * | variantStatus                 | variants $lookup $match          | `active` |
+   * | sku / barcode                 | variants $lookup $match          | contains, case-insensitive |
+   * | unit                          | variants $lookup $match          | `piece` / `kg` / … |
+   * | isDefault                     | variants $lookup $match          | `true` / `false` |
+   * | minPrice / maxPrice           | variant effective price          | 20 / 80 |
+   * | warehouseId                   | levels $lookup $match            | ObjectId |
+   * | stockState                    | live stock                       | `inStock` / `outOfStock` / `hasReserved` / `lowStock` |
+   * | inStock                       | alias for stockState             | `true` / `false` |
+   * | lowStock                      | warehouse available <= N         | `true` / `5` (same as analytics/lowStock) |
+   * | threshold                     | low-stock cap (implies lowStock) | default 5 |
+   * | status=outOfStock             | live on-hand === 0, not status   | |
+   * | minAvailable / maxAvailable   | after totals                     | live sellable units |
+   * | minOnHand / maxOnHand         | after totals                     | |
+   * | minReserved / maxReserved     | after totals                     | |
+   * | sort                          | after totals                     | `order` (default), `newest`, `availableAsc`, `availableDesc`, `onHandAsc`, `onHandDesc`, `reservedDesc`, `priceAsc`, `priceDesc` |
+   * | page, limit                   | $facet pagination                | |
    */
   async getStockOverview(queryParams: Record<string, unknown>): Promise<{
     total: number;
@@ -277,33 +405,89 @@ export class ProductRepository {
     // ── Parse / sanitize filters ──
     // Only keep values that are safe to put into $match (typed ObjectIds,
     // known enums). Unknown junk is ignored so a typo can't break the query.
-    const status =
-      typeof queryParams.status === 'string' && queryParams.status !== 'all'
-        ? queryParams.status
+    const category = parseObjectId(queryParams.category);
+    const brand = parseObjectId(queryParams.brand);
+    const warehouseId = parseObjectId(queryParams.warehouseId);
+    const unit = parseProductUnit(queryParams.unit);
+    const isDefault = parseBooleanQuery(queryParams.isDefault);
+    const showOnBanner = parseBooleanQuery(queryParams.showOnBanner);
+    const createdAt = parseDateRange(queryParams.createdAt);
+    const slug =
+      typeof queryParams.slug === 'string' && queryParams.slug.trim()
+        ? queryParams.slug.trim().toLowerCase()
         : undefined;
-    const category =
-      typeof queryParams.category === 'string' &&
-      Types.ObjectId.isValid(queryParams.category)
-        ? new Types.ObjectId(queryParams.category)
+    const sku =
+      typeof queryParams.sku === 'string' && queryParams.sku.trim()
+        ? queryParams.sku.trim()
         : undefined;
-    const brand =
-      typeof queryParams.brand === 'string' &&
-      Types.ObjectId.isValid(queryParams.brand)
-        ? new Types.ObjectId(queryParams.brand)
+    const barcode =
+      typeof queryParams.barcode === 'string' && queryParams.barcode.trim()
+        ? queryParams.barcode.trim()
         : undefined;
-    const warehouseId =
-      typeof queryParams.warehouseId === 'string' &&
-      Types.ObjectId.isValid(queryParams.warehouseId)
-        ? new Types.ObjectId(queryParams.warehouseId)
-        : undefined;
-    const variantStatus =
-      typeof queryParams.variantStatus === 'string'
-        ? queryParams.variantStatus
-        : undefined;
-    const stockState =
-      typeof queryParams.stockState === 'string'
+    let minPrice = parseNonNegativeNumber(queryParams.minPrice);
+    let maxPrice = parseNonNegativeNumber(queryParams.maxPrice);
+    if (
+      minPrice !== undefined &&
+      maxPrice !== undefined &&
+      minPrice > maxPrice
+    ) {
+      [minPrice, maxPrice] = [maxPrice, minPrice];
+    }
+    const minAvailable = parseNonNegativeNumber(queryParams.minAvailable);
+    const maxAvailable = parseNonNegativeNumber(queryParams.maxAvailable);
+    const minOnHand = parseNonNegativeNumber(queryParams.minOnHand);
+    const maxOnHand = parseNonNegativeNumber(queryParams.maxOnHand);
+    const minReserved = parseNonNegativeNumber(queryParams.minReserved);
+    const maxReserved = parseNonNegativeNumber(queryParams.maxReserved);
+
+    const STOCK_STATES = new Set([
+      'inStock',
+      'outOfStock',
+      'hasReserved',
+      'lowStock',
+    ]);
+    let stockState =
+      typeof queryParams.stockState === 'string' &&
+      STOCK_STATES.has(queryParams.stockState)
         ? queryParams.stockState
         : undefined;
+
+    // `status=outOfStock` is the catalog enum — live stock can disagree.
+    // Treat it as a quantity check instead of matching product.status.
+    let status = parseProductStatus(queryParams.status);
+    if (status === ProductStatus.OUT_OF_STOCK) {
+      if (!stockState) stockState = 'outOfStock';
+      status = undefined;
+    }
+    let variantStatus = parseProductStatus(queryParams.variantStatus);
+    if (variantStatus === ProductStatus.OUT_OF_STOCK) {
+      if (!stockState) stockState = 'outOfStock';
+      variantStatus = undefined;
+    }
+
+    const lowStockFlag = parseBooleanQuery(queryParams.lowStock);
+    const lowStockNumber =
+      lowStockFlag === undefined
+        ? parseNonNegativeNumber(queryParams.lowStock)
+        : undefined;
+    const thresholdParam = parseNonNegativeNumber(queryParams.threshold);
+    let threshold = thresholdParam ?? lowStockNumber;
+
+    if (!stockState) {
+      const inStock = parseBooleanQuery(queryParams.inStock);
+      if (inStock === true) stockState = 'inStock';
+      else if (inStock === false) stockState = 'outOfStock';
+      else if (
+        lowStockFlag === true ||
+        lowStockNumber !== undefined ||
+        thresholdParam !== undefined
+      ) {
+        stockState = 'lowStock';
+      }
+    }
+    if (stockState === 'lowStock' && threshold === undefined) {
+      threshold = 5;
+    }
     const search =
       typeof queryParams.search === 'string' && queryParams.search.trim()
         ? queryParams.search.trim()
@@ -313,24 +497,70 @@ export class ProductRepository {
       ? new RegExp(escapeRegex(search), 'i')
       : undefined;
 
-    // ── Early product $match object ── built dynamically so we only add
-    // keys the client actually sent. Putting filters HERE (before $lookup)
-    // is the cheapest place — fewer products = fewer joins.
-    // NOTE: `search` is NOT applied here — it ORs title/slug with sku/barcode,
-    // and sku lives on another collection, so that OR is applied in Stage 1c
-    // after a tiny probe $lookup.
+    const sortParam =
+      typeof queryParams.sort === 'string' ? queryParams.sort : 'order';
+    const sortStage: Record<string, 1 | -1> =
+      sortParam === 'newest'
+        ? { createdAt: -1 }
+        : sortParam === 'availableAsc'
+          ? { totalAvailable: 1, order: 1 }
+          : sortParam === 'availableDesc'
+            ? { totalAvailable: -1, order: 1 }
+            : sortParam === 'onHandAsc'
+              ? { totalOnHand: 1, order: 1 }
+              : sortParam === 'onHandDesc'
+                ? { totalOnHand: -1, order: 1 }
+                : sortParam === 'reservedDesc'
+                  ? { totalReserved: -1, order: 1 }
+                  : sortParam === 'priceAsc'
+                    ? { minEffectivePrice: 1, order: 1 }
+                    : sortParam === 'priceDesc'
+                      ? { minEffectivePrice: -1, order: 1 }
+                      : { order: 1, createdAt: -1 };
+
+    const priceMatch: Record<string, unknown> = {};
+    if (minPrice !== undefined) priceMatch.$gte = minPrice;
+    if (maxPrice !== undefined) priceMatch.$lte = maxPrice;
+
+    const variantStockMatch: Record<string, unknown> | undefined =
+      stockState === 'inStock'
+        ? { available: { $gt: 0 } }
+        : stockState === 'outOfStock'
+          ? { onHand: 0 }
+          : stockState === 'hasReserved'
+            ? { reserved: { $gt: 0 } }
+            : undefined;
+    const isLowStock = stockState === 'lowStock';
+    const lowStockThreshold = threshold ?? 5;
+
+    const variantFiltersApplied = Boolean(
+      variantStatus ||
+        unit ||
+        isDefault !== undefined ||
+        sku ||
+        barcode ||
+        Object.keys(priceMatch).length ||
+        variantStockMatch ||
+        isLowStock,
+    );
+
     const productMatch: Record<string, unknown> = { deletedAt: null };
     if (status) productMatch.status = status;
     if (category) productMatch.category = category;
     if (brand) productMatch.brand = brand;
+    if (showOnBanner !== undefined) productMatch.showOnBanner = showOnBanner;
+    if (slug) productMatch.slug = slug;
+    if (createdAt) productMatch.createdAt = createdAt;
 
-    // Variant-level $match (inside the variants $lookup). Always join on
-    // productId; optionally also filter by variant status.
     const variantMatch: Record<string, unknown> = {
       $expr: { $eq: ['$product', '$$productId'] },
       deletedAt: null,
     };
     if (variantStatus) variantMatch.status = variantStatus;
+    if (unit) variantMatch.unit = unit;
+    if (isDefault !== undefined) variantMatch.isDefault = isDefault;
+    if (sku) variantMatch.sku = new RegExp(escapeRegex(sku), 'i');
+    if (barcode) variantMatch.barcode = new RegExp(escapeRegex(barcode), 'i');
 
     // Levels $match — optionally scoped to one warehouse.
     const levelMatch: Record<string, unknown> = {
@@ -381,19 +611,19 @@ export class ProductRepository {
                   ...localizedSearchPaths('title').map((path) => ({
                     [path]: searchRegex,
                   })),
+                  ...localizedSearchPaths('description').map((path) => ({
+                    [path]: searchRegex,
+                  })),
+                  ...localizedSearchPaths('shortDescription').map((path) => ({
+                    [path]: searchRegex,
+                  })),
                   { slug: searchRegex },
-                  // $ne: [] means "the probe array is not empty"
                   { _skuHit: { $ne: [] } },
                 ],
               },
             },
           ] as Record<string, unknown>[])
         : []),
-
-      // ── Stage 2: $sort ── stable ordering BEFORE pagination, otherwise
-      // $skip/$limit would slice an arbitrary order and pages could repeat
-      // or miss items between requests.
-      { $sort: { order: 1, createdAt: -1 } },
 
       // ── Stage 3: $lookup (variants) ── a LEFT OUTER JOIN.
       // For each product, run a SUB-PIPELINE against `product_variants` and
@@ -480,6 +710,28 @@ export class ProductRepository {
               },
             },
 
+            // Low stock matches analytics/lowStock: each warehouse row with
+            // available <= threshold (including 0). Summing warehouses first
+            // hid SKUs that were low in one location and healthy in another.
+            ...(isLowStock
+              ? [
+                  {
+                    $addFields: {
+                      byWarehouse: {
+                        $filter: {
+                          input: '$byWarehouse',
+                          as: 'wh',
+                          cond: {
+                            $lte: ['$$wh.available', lowStockThreshold],
+                          },
+                        },
+                      },
+                    },
+                  },
+                  { $match: { byWarehouse: { $ne: [] } } },
+                ]
+              : []),
+
             // ── Stage 3b: $addFields ── ADDS computed fields, keeps the
             // rest of the doc ($project would instead drop everything not
             // listed). '$byWarehouse.onHand' is array navigation: it means
@@ -489,10 +741,15 @@ export class ProductRepository {
               $addFields: {
                 onHand: { $sum: '$byWarehouse.onHand' },
                 reserved: { $sum: '$byWarehouse.reserved' },
+                effectivePrice: {
+                  $cond: [
+                    { $gt: [{ $ifNull: ['$priceAfterDiscount', 0] }, 0] },
+                    '$priceAfterDiscount',
+                    '$price',
+                  ],
+                },
               },
             },
-            // Separate $addFields because a stage can't read a field it is
-            // itself creating — 'onHand' only exists AFTER the stage above.
             {
               $addFields: {
                 available: {
@@ -500,6 +757,10 @@ export class ProductRepository {
                 },
               },
             },
+            ...(Object.keys(priceMatch).length
+              ? [{ $match: { effectivePrice: priceMatch } }]
+              : []),
+            ...(variantStockMatch ? [{ $match: variantStockMatch }] : []),
 
             // When scoped to one warehouse, drop variants that have no level
             // row there at all (keeps the response focused on that location).
@@ -516,36 +777,75 @@ export class ProductRepository {
                 priceAfterDiscount: 1,
                 status: 1,
                 isDefault: 1,
+                options: 1,
+                unit: 1,
+                order: 1,
+                images: 1,
                 stock: 1, // cached counter — should always equal onHand
                 onHand: 1,
                 reserved: 1,
                 available: 1,
                 byWarehouse: 1,
+                effectivePrice: 1,
               },
+
             },
           ],
           as: 'variants',
         },
       },
 
-      // ── Stage 4: $addFields (product totals) ── roll the variant numbers
-      // up to the product level. Same "array navigation + $sum" trick.
+      ...(variantFiltersApplied
+        ? [{ $match: { variants: { $ne: [] } } }]
+        : []),
+
+      // analytics/lowStock is one row per warehouse level, not per product.
+      // Unwind so iPhone (2 in Hamburg + 5 in Berlin) is 2 rows, not "Available 7".
+      ...(isLowStock
+        ? [
+            { $unwind: '$variants' },
+            { $unwind: '$variants.byWarehouse' },
+            {
+              $addFields: {
+                variants: [
+                  {
+                    $mergeObjects: [
+                      '$variants',
+                      {
+                        onHand: '$variants.byWarehouse.onHand',
+                        reserved: '$variants.byWarehouse.reserved',
+                        available: '$variants.byWarehouse.available',
+                        byWarehouse: ['$variants.byWarehouse'],
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          ]
+        : []),
+
       {
         $addFields: {
           variantsCount: { $size: '$variants' },
           totalOnHand: { $sum: '$variants.onHand' },
           totalReserved: { $sum: '$variants.reserved' },
           totalAvailable: { $sum: '$variants.available' },
+          minEffectivePrice: { $min: '$variants.effectivePrice' },
         },
       },
 
-      // ── Stage 4b: post-join filters ── these MUST run AFTER totals exist
-      // (stockState / warehouse presence). Filtering earlier would be wrong
-      // because onHand/reserved are computed fields, not stored columns.
       ...ProductRepository.buildPostJoinStockFilters({
         scopedToWarehouse: !!warehouseId,
-        stockState,
+        minAvailable,
+        maxAvailable,
+        minOnHand,
+        maxOnHand,
+        minReserved,
+        maxReserved,
       }),
+
+      { $sort: sortStage },
 
       // ── Stage 5: $project (final product shape) ──
       // `title` is stored as { en: '...', de: '...' } (i18n field), so we
@@ -601,6 +901,331 @@ export class ProductRepository {
       totalPages: Math.ceil(total / limit),
       data: result.data,
     };
+  }
+
+  /**
+   * Customer catalog: active products + active variants, live `available`
+   * (on-hand minus pending reservations). Warehouse rows and reserved
+   * totals stay off the payload.
+   *
+   * Query params:
+   * | category / brand     | ObjectId                         |
+   * | search               | title, slug, sku, barcode        |
+   * | showOnBanner         | true / false                     |
+   * | minPrice / maxPrice  | effective variant price          |
+   * | inStock              | true → totalAvailable > 0        |
+   * | sort                 | order (default), priceAsc,       |
+   * |                      | priceDesc, rating, newest        |
+   * | page, limit          | pagination                       |
+   */
+  async getStorefrontCatalog(
+    queryParams: Record<string, unknown>,
+  ): Promise<{
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    data: StorefrontProduct[];
+  }> {
+    const page = Math.max(1, Number(queryParams.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(queryParams.limit) || 20));
+    const locale = resolveRequestContentLocale();
+
+    const category = parseObjectId(queryParams.category);
+    const brand = parseObjectId(queryParams.brand);
+    const showOnBanner = parseBooleanQuery(queryParams.showOnBanner);
+    const inStock = parseBooleanQuery(queryParams.inStock);
+    let minPrice = parseNonNegativeNumber(queryParams.minPrice);
+    let maxPrice = parseNonNegativeNumber(queryParams.maxPrice);
+    if (
+      minPrice !== undefined &&
+      maxPrice !== undefined &&
+      minPrice > maxPrice
+    ) {
+      [minPrice, maxPrice] = [maxPrice, minPrice];
+    }
+    const search =
+      typeof queryParams.search === 'string' && queryParams.search.trim()
+        ? queryParams.search.trim()
+        : undefined;
+    const searchRegex = search
+      ? new RegExp(escapeRegex(search), 'i')
+      : undefined;
+    const slug =
+      typeof queryParams.slug === 'string' && queryParams.slug.trim()
+        ? queryParams.slug.trim().toLowerCase()
+        : undefined;
+
+    const productMatch: Record<string, unknown> = {
+      deletedAt: null,
+      status: ProductStatus.ACTIVE,
+    };
+    if (category) productMatch.category = category;
+    if (brand) productMatch.brand = brand;
+    if (showOnBanner !== undefined) productMatch.showOnBanner = showOnBanner;
+    if (slug) productMatch.slug = slug;
+
+    const priceMatch: Record<string, unknown> = {};
+    if (minPrice !== undefined) priceMatch.$gte = minPrice;
+    if (maxPrice !== undefined) priceMatch.$lte = maxPrice;
+
+    const sortParam =
+      typeof queryParams.sort === 'string' ? queryParams.sort : 'order';
+    const sortStage: Record<string, 1 | -1> =
+      sortParam === 'priceAsc'
+        ? { minEffectivePrice: 1, order: 1 }
+        : sortParam === 'priceDesc'
+          ? { minEffectivePrice: -1, order: 1 }
+          : sortParam === 'rating'
+            ? { ratingsAverage: -1, ratingsQuantity: -1 }
+            : sortParam === 'newest'
+              ? { createdAt: -1 }
+              : { order: 1, createdAt: -1 };
+
+    const localizedTitle = {
+      $ifNull: [`$title.${locale}`, `$title.${DEFAULT_CONTENT_LOCALE}`],
+    };
+
+    const pipeline: Record<string, unknown>[] = [
+      { $match: productMatch },
+      ...(searchRegex
+        ? ([
+            {
+              $lookup: {
+                from: 'product_variants',
+                let: { productId: '$_id' },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: { $eq: ['$product', '$$productId'] },
+                      deletedAt: null,
+                      status: ProductStatus.ACTIVE,
+                      $or: [{ sku: searchRegex }, { barcode: searchRegex }],
+                    },
+                  },
+                  { $limit: 1 },
+                  { $project: { _id: 1 } },
+                ],
+                as: '_skuHit',
+              },
+            },
+            {
+              $match: {
+                $or: [
+                  ...localizedSearchPaths('title').map((path) => ({
+                    [path]: searchRegex,
+                  })),
+                  { slug: searchRegex },
+                  { _skuHit: { $ne: [] } },
+                ],
+              },
+            },
+          ] as Record<string, unknown>[])
+        : []),
+      {
+        $lookup: {
+          from: 'product_variants',
+          let: { productId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$product', '$$productId'] },
+                deletedAt: null,
+                status: ProductStatus.ACTIVE,
+              },
+            },
+            { $sort: { order: 1 } },
+            {
+              $lookup: {
+                from: 'inventory_levels',
+                let: { variantId: '$_id' },
+                pipeline: [
+                  { $match: { $expr: { $eq: ['$variant', '$$variantId'] } } },
+                  {
+                    $project: {
+                      _id: 0,
+                      available: {
+                        $max: [
+                          0,
+                          {
+                            $subtract: [
+                              '$quantity',
+                              { $ifNull: ['$reservedQuantity', 0] },
+                            ],
+                          },
+                        ],
+                      },
+                    },
+                  },
+                ],
+                as: '_levels',
+              },
+            },
+            {
+              $addFields: {
+                available: { $sum: '$_levels.available' },
+                effectivePrice: {
+                  $cond: [
+                    { $gt: [{ $ifNull: ['$priceAfterDiscount', 0] }, 0] },
+                    '$priceAfterDiscount',
+                    '$price',
+                  ],
+                },
+              },
+            },
+            ...(Object.keys(priceMatch).length
+              ? [{ $match: { effectivePrice: priceMatch } }]
+              : []),
+            {
+              $project: {
+                sku: 1,
+                price: 1,
+                priceAfterDiscount: 1,
+                status: 1,
+                isDefault: 1,
+                options: 1,
+                unit: 1,
+                order: 1,
+                images: { $ifNull: ['$images', []] },
+                available: 1,
+                effectivePrice: 1,
+              },
+            },
+          ],
+          as: 'variants',
+        },
+      },
+      { $match: { variants: { $ne: [] } } },
+      {
+        $addFields: {
+          totalAvailable: { $sum: '$variants.available' },
+          minEffectivePrice: { $min: '$variants.effectivePrice' },
+        },
+      },
+      ...(inStock === true
+        ? [{ $match: { totalAvailable: { $gt: 0 } } }]
+        : []),
+      { $sort: sortStage },
+      {
+        $lookup: {
+          from: 'categories',
+          localField: 'category',
+          foreignField: '_id',
+          as: '_category',
+        },
+      },
+      {
+        $lookup: {
+          from: 'brands',
+          localField: 'brand',
+          foreignField: '_id',
+          as: '_brand',
+        },
+      },
+      {
+        $unwind: { path: '$_category', preserveNullAndEmptyArrays: true },
+      },
+      {
+        $unwind: { path: '$_brand', preserveNullAndEmptyArrays: true },
+      },
+      {
+        $project: {
+          title: localizedTitle,
+          slug: 1,
+          images: { $ifNull: ['$images', []] },
+          showOnBanner: 1,
+          ratingsAverage: 1,
+          ratingsQuantity: 1,
+          totalAvailable: 1,
+          variants: {
+            $map: {
+              input: '$variants',
+              as: 'v',
+              in: {
+                _id: '$$v._id',
+                sku: '$$v.sku',
+                price: '$$v.price',
+                priceAfterDiscount: '$$v.priceAfterDiscount',
+                status: '$$v.status',
+                isDefault: '$$v.isDefault',
+                options: '$$v.options',
+                unit: '$$v.unit',
+                order: '$$v.order',
+                images: '$$v.images',
+                available: '$$v.available',
+              },
+            },
+          },
+          category: {
+            $cond: [
+              { $ifNull: ['$_category._id', false] },
+              {
+                _id: '$_category._id',
+                title: {
+                  $ifNull: [
+                    `$_category.title.${locale}`,
+                    `$_category.title.${DEFAULT_CONTENT_LOCALE}`,
+                  ],
+                },
+                slug: '$_category.slug',
+                image: '$_category.image',
+              },
+              null,
+            ],
+          },
+          brand: {
+            $cond: [
+              { $ifNull: ['$_brand._id', false] },
+              {
+                _id: '$_brand._id',
+                title: {
+                  $ifNull: [
+                    `$_brand.title.${locale}`,
+                    `$_brand.title.${DEFAULT_CONTENT_LOCALE}`,
+                  ],
+                },
+                slug: '$_brand.slug',
+                logo: '$_brand.logo',
+              },
+              null,
+            ],
+          },
+        },
+      },
+      {
+        $facet: {
+          data: [{ $skip: (page - 1) * limit }, { $limit: limit }],
+          totalCount: [{ $count: 'count' }],
+        },
+      },
+    ];
+
+    const [result] = await this.productModel
+      .aggregate<{
+        data: StorefrontProduct[];
+        totalCount: Array<{ count: number }>;
+      }>(pipeline as unknown as PipelineStage[])
+      .exec();
+
+    const total = result.totalCount[0]?.count ?? 0;
+    return {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 0,
+      data: result.data,
+    };
+  }
+
+  async getStorefrontBySlug(
+    slug: string,
+  ): Promise<StorefrontProduct | null> {
+    const { data } = await this.getStorefrontCatalog({
+      slug,
+      page: 1,
+      limit: 1,
+    });
+    return data[0] ?? null;
   }
 
   async findByDefaultLocaleTitle(

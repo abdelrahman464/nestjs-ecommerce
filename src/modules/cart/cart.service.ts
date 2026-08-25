@@ -13,6 +13,7 @@ import { ProductStatus } from '../products/enums/product-status.enum';
 import { Product, ProductDocument } from '../products/schemas/product.schema';
 import { ProductVariantDocument } from '../products/schemas/product-variant.schema';
 import { resolveVariantUnitPrice } from '../products/utils/pricing.util';
+import { resolveLocalizedTitle } from '../products/utils/product-populate.util';
 import { CART_MAX_ITEM_QUANTITY } from './constants/cart.constants';
 import { AddCartItemDto } from './dto/add-cart-item.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
@@ -21,6 +22,8 @@ import { CartDocument, CartItem } from './schemas/cart.schema';
 import {
   CartItemUnavailableReason,
   CartItemView,
+  CartProductView,
+  CartVariantView,
   CartView,
 } from './types/cart-view.type';
 
@@ -229,10 +232,9 @@ export class CartService {
 
   private getItemVariantId(item: CartItem): string {
     const variant = item.variant as Types.ObjectId | ProductVariantDocument;
-    if (variant instanceof Types.ObjectId) {
-      return variant.toString();
-    }
-    return variant._id.toString();
+    return this.isPopulatedVariant(variant)
+      ? variant._id.toString()
+      : String(variant);
   }
 
   /**
@@ -345,12 +347,14 @@ Tab B → withRetry → attempt 2 → fn():
     };
   }
 
+  
   private async assessItem(item: CartItem): Promise<CartItemView> {
     const populatedVariant = item.variant as
       | Types.ObjectId
       | ProductVariantDocument;
-    const variant =
-      populatedVariant instanceof Types.ObjectId ? null : populatedVariant;
+    const variant = this.isPopulatedVariant(populatedVariant)
+      ? populatedVariant
+      : null;
 
     if (!variant) {
       return {
@@ -371,8 +375,9 @@ Tab B → withRetry → attempt 2 → fn():
     const populatedProduct = variant.product as
       | Types.ObjectId
       | ProductDocument;
-    const product =
-      populatedProduct instanceof Types.ObjectId ? null : populatedProduct;
+    const product = this.isPopulatedProduct(populatedProduct)
+      ? populatedProduct
+      : null;
 
     const isDeleted =
       variant.deletedAt != null || !product || product.deletedAt != null;
@@ -409,8 +414,8 @@ Tab B → withRetry → attempt 2 → fn():
     const available = !unavailableReason;
 
     return {
-      variant: variant._id,
-      product: product?._id ?? null,
+      variant: this.toVariantView(variant),
+      product: product ? this.toProductView(product) : null,
       quantity: item.quantity,
       unitPriceAtAdd: item.unitPriceAtAdd,
       productNameAtAdd: item.productNameAtAdd,
@@ -423,9 +428,72 @@ Tab B → withRetry → attempt 2 → fn():
     };
   }
 
+  private isPopulatedVariant(
+    value: Types.ObjectId | ProductVariantDocument,
+  ): value is ProductVariantDocument {
+    return typeof value === 'object' && value !== null && 'sku' in value;
+  }
+
+  private isPopulatedProduct(
+    value: Types.ObjectId | ProductDocument | null | undefined,
+  ): value is ProductDocument {
+    return typeof value === 'object' && value !== null && 'slug' in value;
+  }
+
+  private toVariantView(variant: ProductVariantDocument): CartVariantView {
+    return {
+      _id: variant._id,
+      sku: variant.sku,
+      price: variant.price,
+      priceAfterDiscount: variant.priceAfterDiscount,
+      status: variant.status,
+      isDefault: variant.isDefault,
+      options: this.optionsToRecord(variant.options),
+      unit: variant.unit,
+      order: variant.order,
+      images: variant.images ?? [],
+    };
+  }
+
+  private toProductView(product: ProductDocument): CartProductView {
+    return {
+      _id: product._id,
+      title: resolveLocalizedTitle(product) ?? 'Product',
+      slug: product.slug,
+      images: product.images ?? [],
+      status: product.status,
+      ratingsAverage: product.ratingsAverage,
+      ratingsQuantity: product.ratingsQuantity,
+      showOnBanner: product.showOnBanner,
+      optionDefinitions: product.optionDefinitions ?? [],
+    };
+  }
+
+ 
+
+  private isNamedRef(
+    value: unknown,
+  ): value is {
+    _id: Types.ObjectId;
+    title?: unknown;
+    slug: string;
+    image?: string;
+    logo?: string;
+  } {
+    return typeof value === 'object' && value !== null && 'slug' in value;
+  }
+
+  private optionsToRecord(
+    options: ProductVariantDocument['options'] | undefined,
+  ): Record<string, string> {
+    if (!options) return {};
+    if (options instanceof Map) return Object.fromEntries(options);
+    return { ...(options as Record<string, string>) };
+  }
+
   private getRawVariantId(
     variant: Types.ObjectId | ProductVariantDocument,
   ): Types.ObjectId {
-    return variant instanceof Types.ObjectId ? variant : variant._id;
+    return this.isPopulatedVariant(variant) ? variant._id : variant;
   }
 }

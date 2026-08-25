@@ -42,6 +42,16 @@ type PostMovementParams = {
   skipWarehouseAssert?: boolean;
 };
 
+function toObjectId(
+  value: Types.ObjectId | string | { _id: Types.ObjectId },
+): Types.ObjectId {
+  if (value instanceof Types.ObjectId) return value;
+  if (typeof value === 'object' && value !== null && '_id' in value) {
+    return new Types.ObjectId(String(value._id));
+  }
+  return new Types.ObjectId(String(value));
+}
+
 @Injectable()
 export class InventoryService {
   constructor(
@@ -482,7 +492,7 @@ export class InventoryService {
         );
       }
 
-      const warehouseOid = new Types.ObjectId(String(params.warehouseId));
+      const warehouseOid = toObjectId(params.warehouseId);
       const payload: CreateMovementPersistence = {
         variant: variant._id,
         product: variant.product,
@@ -496,11 +506,9 @@ export class InventoryService {
         reason: params.reason,
         referenceType: params.referenceType,
         referenceId: params.referenceId
-          ? new Types.ObjectId(String(params.referenceId))
+          ? toObjectId(params.referenceId)
           : null,
-        createdBy: params.createdBy
-          ? new Types.ObjectId(String(params.createdBy))
-          : null,
+        createdBy: params.createdBy ? toObjectId(params.createdBy) : null,
       };
 
       try {

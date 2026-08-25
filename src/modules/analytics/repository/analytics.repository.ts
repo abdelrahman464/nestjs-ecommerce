@@ -26,6 +26,7 @@ import {
   OrderStatusBucket,
   TopProductRow,
 } from '../types/analytics.types';
+import { roundMoney } from '../utils/round-money.util';
 
 export type { AnalyticsDateWindow };
 
@@ -121,13 +122,10 @@ export class AnalyticsRepository {
   }
 
   /**
-   * Best sellers from paid order line items.
+   * Best-selling products from paid order lines, each with its selling variants.
    *
-   * Pipeline shape:
-   *   1. $match paid orders in window
-   *   2. $unwind items  → one row per line
-   *   3. $group by product (+ currency) → sum qty and revenue
-   *   4. $sort + $limit
+   * Pipeline: unwind lines → group by variant → lookup SKU → roll up by product
+   * → sort/limit products. Variant rank is applied in memory on the page.
    */
   async getTopProducts(
     window: AnalyticsDateWindow,
@@ -146,6 +144,12 @@ export class AnalyticsRepository {
         _id: { product: Types.ObjectId; currency: string; productName: string };
         unitsSold: number;
         revenue: number;
+        variants: Array<{
+          variantId: Types.ObjectId;
+          sku: string | null;
+          unitsSold: number;
+          revenue: number;
+        }>;
       }>([
         { $match: match },
         { $unwind: '$items' },
@@ -153,14 +157,43 @@ export class AnalyticsRepository {
           $group: {
             _id: {
               product: '$items.product',
-              // Snapshot name from checkout time (order item), not live product title.
+              variant: '$items.variant',
               productName: '$items.productName',
               currency: '$currency',
             },
             unitsSold: { $sum: '$items.quantity' },
-            // unitPrice was frozen on the order line at purchase time.
             revenue: {
               $sum: { $multiply: ['$items.quantity', '$items.unitPrice'] },
+            },
+          },
+        },
+        {
+          $lookup: {
+            from: 'product_variants',
+            let: { variantId: '$_id.variant' },
+            pipeline: [
+              { $match: { $expr: { $eq: ['$_id', '$$variantId'] } } },
+              { $project: { sku: 1 } },
+            ],
+            as: '_v',
+          },
+        },
+        {
+          $group: {
+            _id: {
+              product: '$_id.product',
+              productName: '$_id.productName',
+              currency: '$_id.currency',
+            },
+            unitsSold: { $sum: '$unitsSold' },
+            revenue: { $sum: '$revenue' },
+            variants: {
+              $push: {
+                variantId: '$_id.variant',
+                sku: { $ifNull: [{ $arrayElemAt: ['$_v.sku', 0] }, null] },
+                unitsSold: '$unitsSold',
+                revenue: '$revenue',
+              },
             },
           },
         },
@@ -174,7 +207,18 @@ export class AnalyticsRepository {
       productName: r._id.productName,
       currency: r._id.currency,
       unitsSold: r.unitsSold,
-      revenue: r.revenue,
+      revenue: roundMoney(r.revenue),
+      variants: [...r.variants]
+        .sort(
+          (a, b) =>
+            b.unitsSold - a.unitsSold || b.revenue - a.revenue,
+        )
+        .map((v) => ({
+          variantId: v.variantId.toString(),
+          sku: v.sku,
+          unitsSold: v.unitsSold,
+          revenue: roundMoney(v.revenue),
+        })),
     }));
   }
 
@@ -212,8 +256,6 @@ export class AnalyticsRepository {
     const pipeline: PipelineStage[] = [
       ...(Object.keys(match).length ? [{ $match: match }] : []),
       {
-        // Schema defaults reservedQuantity to 0, but older/partial docs may omit it.
-        // $subtract with null/undefined yields null → $lte match would drop the row.
         $addFields: {
           quantity: { $ifNull: ['$quantity', 0] },
           reservedQuantity: { $ifNull: ['$reservedQuantity', 0] },
@@ -230,66 +272,64 @@ export class AnalyticsRepository {
           available: { $lte: params.threshold },
         },
       },
-      // Most urgent first (least available).
+      {
+        $lookup: {
+          from: 'product_variants',
+          let: { variantId: '$variant' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$_id', '$$variantId'] },
+                deletedAt: null,
+              },
+            },
+            { $project: { _id: 1, sku: 1, barcode: 1 } },
+          ],
+          as: '_variant',
+        },
+      },
+      {
+        $lookup: {
+          from: 'products',
+          let: { productId: '$product' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$_id', '$$productId'] },
+                deletedAt: null,
+              },
+            },
+            {
+              $project: {
+                _id: 1,
+                slug: 1,
+                title: { $ifNull: [titlePath, titleFallback] },
+              },
+            },
+          ],
+          as: '_product',
+        },
+      },
+      { $match: { _variant: { $ne: [] }, _product: { $ne: [] } } },
       { $sort: { available: 1, quantity: 1 } },
       {
-        // One round-trip: total matching rows + this page’s slice.
         $facet: {
           meta: [{ $count: 'total' }],
           data: [
             { $skip: skip },
             { $limit: limit },
-            // ── Lean joins (page only) ──────────────────────────────
-            {
-              $lookup: {
-                from: 'product_variants',
-                let: { variantId: '$variant' },
-                pipeline: [
-                  { $match: { $expr: { $eq: ['$_id', '$$variantId'] } } },
-                  {
-                    $project: {
-                      _id: 1,
-                      sku: 1,
-                      barcode: 1,
-                    },
-                  },
-                ],
-                as: '_variant',
-              },
-            },
-            {
-              $lookup: {
-                from: 'products',
-                let: { productId: '$product' },
-                pipeline: [
-                  { $match: { $expr: { $eq: ['$_id', '$$productId'] } } },
-                  {
-                    $project: {
-                      _id: 1,
-                      slug: 1,
-                      // Prefer request locale; fall back to default content locale.
-                      title: {
-                        $ifNull: [titlePath, titleFallback],
-                      },
-                    },
-                  },
-                ],
-                as: '_product',
-              },
-            },
             {
               $lookup: {
                 from: 'warehouses',
                 let: { warehouseId: '$warehouse' },
                 pipeline: [
-                  { $match: { $expr: { $eq: ['$_id', '$$warehouseId'] } } },
                   {
-                    $project: {
-                      _id: 1,
-                      name: 1,
-                      code: 1,
+                    $match: {
+                      $expr: { $eq: ['$_id', '$$warehouseId'] },
+                      deletedAt: null,
                     },
                   },
+                  { $project: { _id: 1, name: 1, code: 1 } },
                 ],
                 as: '_warehouse',
               },
@@ -304,15 +344,9 @@ export class AnalyticsRepository {
                   $let: {
                     vars: { v: { $arrayElemAt: ['$_variant', 0] } },
                     in: {
-                      $cond: [
-                        { $eq: ['$$v', null] },
-                        null,
-                        {
-                          id: { $toString: '$$v._id' },
-                          sku: '$$v.sku',
-                          barcode: '$$v.barcode',
-                        },
-                      ],
+                      id: { $toString: '$$v._id' },
+                      sku: '$$v.sku',
+                      barcode: '$$v.barcode',
                     },
                   },
                 },
@@ -320,15 +354,9 @@ export class AnalyticsRepository {
                   $let: {
                     vars: { p: { $arrayElemAt: ['$_product', 0] } },
                     in: {
-                      $cond: [
-                        { $eq: ['$$p', null] },
-                        null,
-                        {
-                          id: { $toString: '$$p._id' },
-                          title: '$$p.title',
-                          slug: '$$p.slug',
-                        },
-                      ],
+                      id: { $toString: '$$p._id' },
+                      title: '$$p.title',
+                      slug: '$$p.slug',
                     },
                   },
                 },
@@ -463,9 +491,8 @@ export class AnalyticsRepository {
     for (const row of facet?.paid ?? []) {
       byCurrency.set(row._id, {
         currency: row._id,
-        grossRevenue: row.grossRevenue,
+        grossRevenue: roundMoney(row.grossRevenue),
         refundedAmount: 0,
-        netRevenue: row.grossRevenue,
         paidCount: row.paidCount,
         refundedCount: 0,
       });
@@ -476,13 +503,11 @@ export class AnalyticsRepository {
         currency: row._id,
         grossRevenue: 0,
         refundedAmount: 0,
-        netRevenue: 0,
         paidCount: 0,
         refundedCount: 0,
       };
-      existing.refundedAmount = row.refundedAmount;
+      existing.refundedAmount = roundMoney(row.refundedAmount);
       existing.refundedCount = row.refundedCount;
-      existing.netRevenue = existing.grossRevenue - existing.refundedAmount;
       byCurrency.set(row._id, existing);
     }
 

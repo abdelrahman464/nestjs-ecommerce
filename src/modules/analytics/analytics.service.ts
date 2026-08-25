@@ -122,16 +122,6 @@ export class AnalyticsService {
     return this.insightsRepository.getWarehouseLoad();
   }
 
-  /** 9 */ getTopVariants(
-    query: AnalyticsRangeQueryDto,
-  ): Promise<VariantSalesRow[]> {
-    return this.insightsRepository.getVariantSales(
-      this.toWindow(query),
-      query.limit ?? 10,
-      'top',
-    );
-  }
-
   /** 10 */ getSlowMovers(
     query: AnalyticsRangeQueryDto,
   ): Promise<VariantSalesRow[]> {

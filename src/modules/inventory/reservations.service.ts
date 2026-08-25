@@ -21,6 +21,7 @@ import { InventoryLevelsRepository } from './repository/inventory-levels.reposit
 import { ReservationsRepository } from './repository/reservations.repository';
 import { InventoryReservationDocument } from './schemas/inventory-reservation.schema';
 import { ReservationLine } from './schemas/reservation-line.schema';
+import { PaginatedResponseDto } from '../../shared/dtos/paginated-response.dto';
 
 export type ReserveItemInput = {
   variantId: Types.ObjectId | string;
@@ -76,11 +77,47 @@ export class ReservationsService {
     return reservation;
   }
 
+  async findByIdForDisplay(
+    id: Types.ObjectId,
+  ): Promise<InventoryReservationDocument> {
+    const reservation =
+      await this.reservationsRepository.findByIdForDisplay(id);
+    if (!reservation) {
+      throw new I18nHttpException(
+        HttpStatus.NOT_FOUND,
+        'reservation.notFound',
+        { id: id.toString() },
+      );
+    }
+    return reservation;
+  }
+
+  async findAll(
+    queryParams: Record<string, unknown>,
+  ): Promise<PaginatedResponseDto<InventoryReservationDocument>> {
+    return this.reservationsRepository.findAll(queryParams);
+  }
+
   async findByOrderId(
     orderId: Types.ObjectId | string,
   ): Promise<InventoryReservationDocument> {
     const reservation =
       await this.reservationsRepository.findByOrderId(orderId);
+    if (!reservation) {
+      throw new I18nHttpException(
+        HttpStatus.NOT_FOUND,
+        'reservation.notFoundForOrder',
+        { orderId: String(orderId) },
+      );
+    }
+    return reservation;
+  }
+
+  async findByOrderIdForDisplay(
+    orderId: Types.ObjectId | string,
+  ): Promise<InventoryReservationDocument> {
+    const reservation =
+      await this.reservationsRepository.findByOrderIdForDisplay(orderId);
     if (!reservation) {
       throw new I18nHttpException(
         HttpStatus.NOT_FOUND,

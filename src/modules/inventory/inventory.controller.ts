@@ -136,7 +136,15 @@ export class InventoryController {
   async findReservationByOrder(
     @Param('orderId', ParseObjectIdPipe) orderId: Types.ObjectId,
   ): Promise<InventoryReservationDocument> {
-    return this.reservationsService.findByOrderId(orderId);
+    return this.reservationsService.findByOrderIdForDisplay(orderId);
+  }
+
+  @Get('reservations')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  async findAllReservations(
+    @Query() queryParams: Record<string, unknown>,
+  ): Promise<PaginatedResponseDto<InventoryReservationDocument>> {
+    return this.reservationsService.findAll(queryParams);
   }
 
   @Get('reservations/:id')
@@ -144,7 +152,7 @@ export class InventoryController {
   async findReservation(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
   ): Promise<InventoryReservationDocument> {
-    return this.reservationsService.findById(id);
+    return this.reservationsService.findByIdForDisplay(id);
   }
 
   @Post('reservations/:id/release')

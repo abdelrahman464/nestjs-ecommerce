@@ -8,6 +8,7 @@ import {
   Delete,
   HttpCode,
   HttpStatus,
+  Query,
 } from '@nestjs/common';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { SerializeDto } from '../../common/decorators/serializeDto.decorator';
@@ -16,10 +17,11 @@ import type { AuthenticatedUser } from '../../common/types/authenticated-user.ty
 import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
 import { Types } from 'mongoose';
 import { AdminUserResponseDto } from './dto/admin-manager-response.dto';
-import { UserResponseDto } from './dto/user-response.dto';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UsersService } from './users.service';
+import { PaginatedResponseDto } from '../../shared/dtos/paginated-response.dto';
 import { UserRole } from './enums/user-role.enum';
 import { UserDocument } from './schemas/user.schema';
 
@@ -30,8 +32,10 @@ export class UsersController {
 
   @Get()
   @Roles(UserRole.ADMIN)
-  async findAll(): Promise<UserDocument[]> {
-    return this.usersService.findAll();
+  async findAll(
+    @Query() queryParams: Record<string, unknown>,
+  ): Promise<PaginatedResponseDto<UserDocument>> {
+    return this.usersService.findAll(queryParams);
   }
 
   @Post()
@@ -44,25 +48,39 @@ export class UsersController {
     return this.usersService.create(createUserDto, authUser);
   }
 
+  @Get('customers')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  async findCustomers(
+    @Query() queryParams: Record<string, unknown>,
+  ): Promise<PaginatedResponseDto<UserDocument>> {
+    return this.usersService.findCustomers(queryParams);
+  }
+
   @Get('profile')
-  @SerializeDto(UserResponseDto)
   async getProfile(
     @GetAuthUser() authUser: AuthenticatedUser,
   ): Promise<UserDocument> {
     return this.usersService.findOne(authUser.id);
   }
 
-  @Get(':id') //validate mongoId
+  @Patch('profile')
+  async updateProfile(
+    @Body() dto: UpdateProfileDto,
+    @GetAuthUser() authUser: AuthenticatedUser,
+  ): Promise<UserDocument> {
+    return this.usersService.updateProfile(authUser.id, dto, authUser);
+  }
+
+  @Get(':id')
   @Roles(UserRole.ADMIN)
-  @SerializeDto(UserResponseDto)
   async findOne(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
   ): Promise<UserDocument> {
     return this.usersService.findOne(id);
   }
 
-  @Patch(':id') //validate mongoId
-  @Roles(UserRole.ADMIN, UserRole.USER)
+  @Patch(':id')
+  @Roles(UserRole.ADMIN)
   async update(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() updateUserDto: UpdateUserDto,
@@ -71,8 +89,8 @@ export class UsersController {
     return this.usersService.update(id, updateUserDto, authUser);
   }
 
-  @Delete(':id') //validate mongoId
-  @Roles(UserRole.ADMIN, UserRole.USER)
+  @Delete(':id')
+  @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async delete(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,

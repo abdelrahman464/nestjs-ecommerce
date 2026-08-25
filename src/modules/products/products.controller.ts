@@ -53,6 +53,22 @@ export class ProductsController {
   }
 
   /**
+   * Customer catalog. Must sit before `:id` so "storefront" is not parsed
+   * as an ObjectId.
+   */
+  @Public()
+  @Get('storefront')
+  async findStorefront(@Query() queryParams: Record<string, unknown>) {
+    return this.productsService.getStorefrontCatalog(queryParams);
+  }
+
+  @Public()
+  @Get('storefront/slug/:slug')
+  async findStorefrontBySlug(@Param('slug') slug: string) {
+    return this.productsService.getStorefrontBySlug(slug);
+  }
+
+  /**
    * Declared BEFORE `@Get(':id')` — Nest matches same-depth routes in
    * declaration order, so putting it later would let `:id` swallow
    * "stock-overview" and fail the ObjectId pipe.

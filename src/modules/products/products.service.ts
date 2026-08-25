@@ -54,6 +54,22 @@ export class ProductsService {
     return this.productRepository.getStockOverview(queryParams);
   }
 
+  async getStorefrontCatalog(queryParams: Record<string, unknown>) {
+    return this.productRepository.getStorefrontCatalog(queryParams);
+  }
+
+  async getStorefrontBySlug(slug: string) {
+    const product = await this.productRepository.getStorefrontBySlug(slug);
+    if (!product) {
+      throw new I18nHttpException(
+        HttpStatus.NOT_FOUND,
+        'product.notFoundBySlug',
+        { slug },
+      );
+    }
+    return product;
+  }
+
   async findOne(id: Types.ObjectId): Promise<ProductDocument> {
     const product = await this.productRepository.findById(id);
     if (!product) {

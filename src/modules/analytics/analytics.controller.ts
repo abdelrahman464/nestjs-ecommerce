@@ -52,6 +52,7 @@ export class AnalyticsController {
     return this.analyticsService.getOrdersByDay(query);
   }
 
+  /** Best-selling products; each row includes that product's selling variants. */
   @Get('topProducts')
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   topProducts(
@@ -134,15 +135,6 @@ export class AnalyticsController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   warehouseLoad(): Promise<WarehouseLoadRow[]> {
     return this.analyticsService.getWarehouseLoad();
-  }
-
-  /** 9) Best-selling SKUs. */
-  @Get('topVariants')
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
-  topVariants(
-    @Query() query: AnalyticsRangeQueryDto,
-  ): Promise<VariantSalesRow[]> {
-    return this.analyticsService.getTopVariants(query);
   }
 
   /** 10) Least-selling SKUs that still had sales in the window. */

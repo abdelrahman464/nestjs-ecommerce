@@ -16,8 +16,6 @@ export type MoneyBucket = {
   grossRevenue: number;
   /** Sum of payment.amount for status=refunded in the window (by refundedAt). */
   refundedAmount: number;
-  /** grossRevenue - refundedAmount (same currency only). */
-  netRevenue: number;
   paidCount: number;
   refundedCount: number;
 };
@@ -45,12 +43,21 @@ export type OrdersByDayPoint = {
   revenue: number;
 };
 
+export type TopProductVariantRow = {
+  variantId: string;
+  sku: string | null;
+  unitsSold: number;
+  revenue: number;
+};
+
 export type TopProductRow = {
   productId: string;
   productName: string;
   currency: string;
   unitsSold: number;
   revenue: number;
+  /** Variants of this product that sold in the window, best first. */
+  variants: TopProductVariantRow[];
 };
 
 /** Lean joined docs — only fields the admin table needs (no full populate). */
@@ -105,7 +112,7 @@ export type RefundAnalytics = {
     currency: string;
     grossRevenue: number;
     refundedAmount: number;
-    /** refundedAmount / grossRevenue (0 if no gross). */
+    /** refundedAmount / (grossRevenue + refundedAmount). 0 if nothing captured. */
     refundRate: number;
     refundedCount: number;
   }>;

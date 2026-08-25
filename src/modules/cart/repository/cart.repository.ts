@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { VARIANT_PUBLIC_FIELDS } from '../../products/constants/product.constants';
-import { PRODUCT_PUBLIC_FIELDS } from '../../products/constants/product.constants';
+import { Model, PopulateOptions, Types } from 'mongoose';
+import {
+  PRODUCT_PUBLIC_FIELDS,
+  VARIANT_PUBLIC_FIELDS,
+} from '../../products/constants/product.constants';
 import { Cart, CartDocument } from '../schemas/cart.schema';
 
 @Injectable()
@@ -12,11 +14,11 @@ export class CartRepository {
   ) {}
 
   /**
-   * `deletedAt` is appended (not part of the public field lists) so the
-   * service can detect soft-deleted variants/products for availability
-   * checks. It is never returned as-is — responses go through `CartView`.
+   * `deletedAt` is appended so the service can flag soft-deleted lines.
+   * The HTTP payload is still a `CartView` — internals (stock cache,
+   * barcode, deletedAt) are stripped there.
    */
-  private static readonly populate = [
+  private static readonly populate: PopulateOptions[] = [
     {
       path: 'items.variant',
       select: `${VARIANT_PUBLIC_FIELDS} deletedAt`,

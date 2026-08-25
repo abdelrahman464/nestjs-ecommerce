@@ -418,9 +418,7 @@ export class AuthService {
 
     const byEmail = await this.userRepo.findUserByEmail(googleUser.email);
     if (byEmail) {
-      const linked = await this.userRepo.updateUser(byEmail._id, {
-        googleId: googleUser.googleId,
-      });
+      const linked = await this.userRepo.updateUserGoogleId(byEmail._id, googleUser.googleId  );
       return linked ?? byEmail;
     }
 

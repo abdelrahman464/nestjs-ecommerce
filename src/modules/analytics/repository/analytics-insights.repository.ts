@@ -40,6 +40,7 @@ import {
   WarehouseLoadRow,
 } from '../types/analytics.types';
 import { formatDurationMs } from '../utils/format-duration.util';
+import { roundMoney, roundRate } from '../utils/round-money.util';
 
 /**
  * Extra dashboard aggregates (payment funnel, merchandising, customers, …).
@@ -218,7 +219,7 @@ export class AnalyticsInsightsRepository {
     for (const row of facet?.paid ?? []) {
       byCurrencyMap.set(row._id, {
         currency: row._id,
-        grossRevenue: row.grossRevenue,
+        grossRevenue: roundMoney(row.grossRevenue),
         refundedAmount: 0,
         refundRate: 0,
         refundedCount: 0,
@@ -232,10 +233,12 @@ export class AnalyticsInsightsRepository {
         refundRate: 0,
         refundedCount: 0,
       };
-      cur.refundedAmount = row.refundedAmount;
+      cur.refundedAmount = roundMoney(row.refundedAmount);
       cur.refundedCount = row.refundedCount;
+      // Refunded payments already left grossRevenue (status flipped paid → refunded).
+      const captured = cur.grossRevenue + cur.refundedAmount;
       cur.refundRate =
-        cur.grossRevenue > 0 ? cur.refundedAmount / cur.grossRevenue : 0;
+        captured > 0 ? roundRate(cur.refundedAmount / captured) : 0;
       byCurrencyMap.set(row._id, cur);
     }
 
@@ -358,7 +361,10 @@ export class AnalyticsInsightsRepository {
         currency: r._id,
         paidCount: r.paidCount,
         grossRevenue: r.grossRevenue,
-        aov: r.paidCount > 0 ? r.grossRevenue / r.paidCount : 0,
+        aov:
+          r.paidCount > 0
+            ? Math.round((r.grossRevenue / r.paidCount) * 100) / 100
+            : 0, 
       })),
     };
   }
@@ -550,6 +556,8 @@ export class AnalyticsInsightsRepository {
       },
       // Still sitting on shelves (available > 0) and never sold in window.
       { $match: { available: { $gt: 0 } } },
+      ...this.leanCatalogLookups(titlePath, titleFallback),
+      { $match: { _variant: { $ne: [] }, _product: { $ne: [] } } },
       { $sort: { available: -1, quantity: -1 } },
       {
         $facet: {
@@ -557,7 +565,7 @@ export class AnalyticsInsightsRepository {
           data: [
             { $skip: skip },
             { $limit: limit },
-            ...this.leanInventoryLookups(titlePath, titleFallback),
+            this.leanWarehouseLookup(),
             this.leanInventoryProject(),
           ],
         },
@@ -655,7 +663,7 @@ export class AnalyticsInsightsRepository {
     }));
   }
 
-  // ── 9 / 10) Top / slow variants ──────────────────────────────────
+  // ── 10) Slow variants ────────────────────────────────────────────
 
   async getVariantSales(
     window: AnalyticsDateWindow,
@@ -985,17 +993,22 @@ export class AnalyticsInsightsRepository {
 
   // ── shared helpers ───────────────────────────────────────────────
 
-  private leanInventoryLookups(
+  private leanCatalogLookups(
     titlePath: string,
     titleFallback: string,
-  ): PipelineStage[] {
+  ): Record<string, unknown>[] {
     return [
       {
         $lookup: {
           from: 'product_variants',
           let: { variantId: '$variant' },
           pipeline: [
-            { $match: { $expr: { $eq: ['$_id', '$$variantId'] } } },
+            {
+              $match: {
+                $expr: { $eq: ['$_id', '$$variantId'] },
+                deletedAt: null,
+              },
+            },
             { $project: { sku: 1, barcode: 1 } },
           ],
           as: '_variant',
@@ -1006,7 +1019,12 @@ export class AnalyticsInsightsRepository {
           from: 'products',
           let: { productId: '$product' },
           pipeline: [
-            { $match: { $expr: { $eq: ['$_id', '$$productId'] } } },
+            {
+              $match: {
+                $expr: { $eq: ['$_id', '$$productId'] },
+                deletedAt: null,
+              },
+            },
             {
               $project: {
                 slug: 1,
@@ -1017,21 +1035,29 @@ export class AnalyticsInsightsRepository {
           as: '_product',
         },
       },
-      {
-        $lookup: {
-          from: 'warehouses',
-          let: { warehouseId: '$warehouse' },
-          pipeline: [
-            { $match: { $expr: { $eq: ['$_id', '$$warehouseId'] } } },
-            { $project: { name: 1, code: 1 } },
-          ],
-          as: '_warehouse',
-        },
-      },
     ];
   }
 
-  private leanInventoryProject(): PipelineStage {
+  private leanWarehouseLookup(): Record<string, unknown> {
+    return {
+      $lookup: {
+        from: 'warehouses',
+        let: { warehouseId: '$warehouse' },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ['$_id', '$$warehouseId'] },
+              deletedAt: null,
+            },
+          },
+          { $project: { name: 1, code: 1 } },
+        ],
+        as: '_warehouse',
+      },
+    };
+  }
+
+  private leanInventoryProject(): Record<string, unknown> {
     return {
       $project: {
         _id: 0,

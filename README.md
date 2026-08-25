@@ -73,7 +73,7 @@ Key invariants (full list in [docs/BUSINESS_RULES.md](docs/BUSINESS_RULES.md)):
 
 ### Prerequisites
 
-- Node.js 22+ (`nestjs-i18n` requires it; Docker image is `node:22-bookworm-slim`)
+- Node.js **22.12+** (`nestjs-i18n` requires 22+; Docker image is `node:22.23.2-bookworm-slim`)
 - MongoDB **Atlas** (replica set is already on). Transactions need a replica set — Atlas provides that. Put the connection string in `MONGO_URI`. In Atlas → Network Access, allow your IP (or `0.0.0.0/0` for local Docker).
 
 ### Install & configure
@@ -182,11 +182,13 @@ Observability: **Pino (done)**. OpenTelemetry / full APM skipped for now.
 
 **Audit log (done):** append-only Mongo collection for sensitive mutations (payments markPaid/refund, inventory movements/transfers, reservation release, auth logout-all/change/reset password/revoke session, user CRUD, warehouse CRUD, manual orders). Writes never fail the business action. Query: `GET /auditLogs` and `GET /auditLogs/:id` (ADMIN). Filter via existing query params (`action`, `resourceType`, `actor`, …).
 
-**Analytics (done):** read-only Mongo aggregates for the admin dashboard (ADMIN + MANAGER).
+**Analytics (done):** read-only Mongo aggregates for the admin dashboard (ADMIN + MANAGER). Details: [`docs/BUSINESS_RULES.md`](docs/BUSINESS_RULES.md) §13.
 
-MVP: `summary`, `ordersByDay`, `topProducts`, `lowStock` (paginated + lean joins).
+MVP: `summary` (gross + refunded per currency; **no netRevenue** — a refund flips the same payment off `paid`), `ordersByDay`, `topProducts` (each product includes its selling `variants[]`; there is no `topVariants` route), `lowStock` (paginated, **one row per warehouse**, `available ≤ threshold`).
 
-Insights: `paymentFunnel`, `refunds`, `revenueBySource`, `aov`, `reservationHealth`, `stockouts`, `deadStock?days=30`, `warehouseLoad`, `topVariants`, `slowMovers`, `revenueByCategory`, `revenueByBrand`, `customerSegments`, `topCustomers`.
+Insights: `paymentFunnel`, `refunds` (`refundRate` = refunded ÷ (gross + refunded)), `revenueBySource`, `aov`, `reservationHealth`, `stockouts` (`threshold=0`), `deadStock?days=30`, `warehouseLoad`, `slowMovers`, `revenueByCategory`, `revenueByBrand`, `customerSegments` (new vs returning **counts**), `topCustomers` (highest spenders).
+
+Related catalog reads: public `GET /products/storefront`, admin `GET /products/stockOverview` (low-stock filter uses the same warehouse grain as `analytics/lowStock`).
 
 Query: `?from=&to=&currency=&limit=&page=` (inventory lists also take `threshold` / `warehouseId` / `days`).
 

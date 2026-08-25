@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { ProductOptionDefinition } from '../../products/schemas/product-option-definition.schema';
 
 export enum CartItemUnavailableReason {
   DELETED = 'deleted',
@@ -7,13 +8,44 @@ export enum CartItemUnavailableReason {
   INSUFFICIENT_STOCK = 'insufficientStock',
 }
 
+
+/** Customer-safe product snapshot nested on a cart line. */
+export type CartProductView = {
+  _id: Types.ObjectId;
+  title: string;
+  slug: string;
+  images: string[];
+  status: string;
+  ratingsAverage: number;
+  ratingsQuantity: number;
+  showOnBanner: boolean;
+  optionDefinitions: ProductOptionDefinition[];
+};
+
+/** Customer-safe variant snapshot nested on a cart line. */
+export type CartVariantView = {
+  _id: Types.ObjectId;
+  sku: string;
+  price: number;
+  priceAfterDiscount: number;
+  status: string;
+  isDefault: boolean;
+  options: Record<string, string>;
+  unit: string;
+  order: number;
+  images: string[];
+};
+
 /**
  * Read-model for one cart line — computed on every read, never persisted
  * (except `unitPriceAtAdd` / `productNameAtAdd`, which live on the document).
+ *
+ * `variant` / `product` are populated objects when the documents still exist.
+ * If the variant row itself is gone, `variant` falls back to the stored ObjectId.
  */
 export interface CartItemView {
-  variant: Types.ObjectId;
-  product: Types.ObjectId | null;
+  variant: CartVariantView | Types.ObjectId;
+  product: CartProductView | null;
   quantity: number;
   unitPriceAtAdd: number;
   productNameAtAdd: string;

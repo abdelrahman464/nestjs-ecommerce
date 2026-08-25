@@ -90,7 +90,7 @@ export class PaymentsController {
   }
 
   @Get('/')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
   async findAllPayments(
     @Query() queryParams: Record<string, any>,
   ): Promise<PaginatedResponseDto<PaymentDocument>> {
@@ -98,7 +98,7 @@ export class PaymentsController {
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
   async findPaymentById(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
   ): Promise<PaymentDocument> {

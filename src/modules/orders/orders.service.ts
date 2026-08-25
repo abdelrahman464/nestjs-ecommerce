@@ -28,17 +28,19 @@ export class OrdersService {
     id: Types.ObjectId,
     requester?: { id: string; isStaff: boolean },
   ): Promise<OrderDocument> {
-    const order = await this.ordersRepository.findById(id);
+    const order = requester
+      ? await this.ordersRepository.findByIdForDisplay(id)
+      : await this.ordersRepository.findById(id);
     if (!order) {
       throw new I18nHttpException(HttpStatus.NOT_FOUND, 'order.notFound', {
         id: id.toString(),
       });
     }
-    if (
-      requester &&
-      !requester.isStaff &&
-      order.user.toString() !== requester.id
-    ) {
+    const ownerId = String(
+      (order.user as Types.ObjectId | { _id: Types.ObjectId })._id ??
+        order.user,
+    );
+    if (requester && !requester.isStaff && ownerId !== requester.id) {
       throw new I18nHttpException(HttpStatus.FORBIDDEN, 'order.forbidden');
     }
     return order;
